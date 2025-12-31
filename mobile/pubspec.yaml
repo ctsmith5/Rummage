@@ -1,0 +1,61 @@
+name: rummage
+description: A garage sale discovery app for browsing local sales in your neighborhood.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI
+  cupertino_icons: ^1.0.6
+  
+  # State Management
+  provider: ^6.1.1
+  
+  # Networking
+  http: ^1.1.0
+  
+  # Location & Maps
+  geolocator: ^10.1.0
+  google_maps_flutter: ^2.5.0
+  geocoding: ^2.1.1
+  
+  # Image Handling
+  image_picker: ^1.0.4
+  cached_network_image: ^3.3.0
+  
+  # Storage
+  flutter_secure_storage: ^9.0.0
+  shared_preferences: ^2.2.2
+  
+  # Utilities
+  intl: ^0.18.1
+  url_launcher: ^6.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/icons/
+
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+        - asset: assets/fonts/Poppins-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Poppins-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
+
