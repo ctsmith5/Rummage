@@ -8,9 +8,8 @@
 *.swp
 *.swo
 
-# Test files
+# Test files (but keep cmd directory structure)
 *_test.go
-test/
 
 # Local uploads
 uploads/*
@@ -29,4 +28,8 @@ server
 # Environment files
 .env
 .env.local
+
+# Explicitly include cmd directory (don't ignore it)
+!cmd/
+
 
