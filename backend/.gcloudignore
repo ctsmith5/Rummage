@@ -1,0 +1,32 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Test files
+*_test.go
+test/
+
+# Local uploads
+uploads/*
+!uploads/.gitkeep
+
+# Build artifacts
+server
+*.exe
+*.dll
+*.so
+
+# Documentation (keep DEPLOY.md)
+*.md
+!DEPLOY.md
+
+# Environment files
+.env
+.env.local
+

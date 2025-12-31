@@ -14,8 +14,12 @@ type Config struct {
 }
 
 func Load() *Config {
+	// Cloud Run uses PORT env var
+	port := getEnv("PORT", "8080")
+	serverAddress := getEnv("SERVER_ADDRESS", ":"+port)
+
 	return &Config{
-		ServerAddress:   getEnv("SERVER_ADDRESS", ":8080"),
+		ServerAddress:   serverAddress,
 		JWTSecret:       getEnv("JWT_SECRET", "your-secret-key-change-in-production"),
 		JWTExpiration:   24 * time.Hour,
 		UploadDir:       getEnv("UPLOAD_DIR", "./uploads"),
