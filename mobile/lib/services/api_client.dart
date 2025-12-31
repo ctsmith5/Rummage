@@ -5,7 +5,9 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ApiClient {
-  static const String baseUrl = 'http://localhost:8080/api';
+  // Development: Use Cloud Run deployed backend
+  // For local testing, change back to: 'http://localhost:8080/api'
+  static const String baseUrl = 'https://rummage-backend-287868745320.us-central1.run.app/api';
   static const _storage = FlutterSecureStorage();
   static const _tokenKey = 'auth_token';
 
