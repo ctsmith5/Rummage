@@ -21,7 +21,7 @@ dependencies:
   
   # Location & Maps
   geolocator: ^10.1.0
-  # google_maps_flutter: ^2.5.0  # Uncomment when testing on Android/iOS/Web
+  google_maps_flutter: ^2.5.0
   geocoding: ^2.1.1
   
   # Image Handling

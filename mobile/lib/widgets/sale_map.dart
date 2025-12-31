@@ -1,9 +1,11 @@
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../models/garage_sale.dart';
 import '../theme/app_colors.dart';
+import '../theme/map_styles.dart';
 
 /// Check if Google Maps is supported on this platform
 bool get isGoogleMapsSupported {
@@ -15,9 +17,8 @@ bool get isGoogleMapsSupported {
   }
 }
 
-/// Main map widget - uses placeholder on Windows/Linux/macOS
-/// For full Google Maps support, run on Android, iOS, or Web
-class SaleMap extends StatelessWidget {
+/// Main map widget - uses Google Maps on Android/iOS/Web, placeholder on desktop
+class SaleMap extends StatefulWidget {
   final List<GarageSale> sales;
   final double userLatitude;
   final double userLongitude;
@@ -34,16 +35,74 @@ class SaleMap extends StatelessWidget {
   });
 
   @override
+  State<SaleMap> createState() => _SaleMapState();
+}
+
+class _SaleMapState extends State<SaleMap> {
+  GoogleMapController? _mapController;
+  
+  Set<Marker> _buildMarkers() {
+    return widget.sales.map((sale) {
+      final isSelected = sale.id == widget.selectedSale?.id;
+      return Marker(
+        markerId: MarkerId(sale.id),
+        position: LatLng(sale.latitude, sale.longitude),
+        icon: BitmapDescriptor.defaultMarkerWithHue(
+          sale.isActive 
+              ? BitmapDescriptor.hueOrange
+              : BitmapDescriptor.hueRed,
+        ),
+        infoWindow: InfoWindow(
+          title: sale.title,
+          snippet: sale.isActive ? '🟢 LIVE NOW' : sale.address,
+          onTap: () => widget.onSaleSelected?.call(sale),
+        ),
+        onTap: () => widget.onSaleSelected?.call(sale),
+        zIndex: isSelected ? 1.0 : 0.0,
+      );
+    }).toSet();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Use placeholder on all desktop platforms
-    // Google Maps Flutter plugin doesn't support Windows/Linux/macOS
-    return SaleMapPlaceholder(
-      sales: sales,
-      onSaleSelected: onSaleSelected,
-      selectedSaleId: selectedSale?.id,
-      userLatitude: userLatitude,
-      userLongitude: userLongitude,
+    // Use placeholder on desktop platforms
+    if (!isGoogleMapsSupported) {
+      return SaleMapPlaceholder(
+        sales: widget.sales,
+        onSaleSelected: widget.onSaleSelected,
+        selectedSaleId: widget.selectedSale?.id,
+        userLatitude: widget.userLatitude,
+        userLongitude: widget.userLongitude,
+      );
+    }
+
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(
+        target: LatLng(widget.userLatitude, widget.userLongitude),
+        zoom: 14.0,
+      ),
+      markers: _buildMarkers(),
+      myLocationEnabled: true,
+      myLocationButtonEnabled: true,
+      mapToolbarEnabled: false,
+      zoomControlsEnabled: true,
+      compassEnabled: true,
+      onMapCreated: (controller) {
+        _mapController = controller;
+        if (isDarkMode) {
+          controller.setMapStyle(MapStyles.darkStyle);
+        }
+      },
+      style: isDarkMode ? MapStyles.darkStyle : null,
     );
+  }
+
+  @override
+  void dispose() {
+    _mapController?.dispose();
+    super.dispose();
   }
 }
 
