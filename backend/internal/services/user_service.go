@@ -88,3 +88,15 @@ func (s *UserService) GetByID(id string) (*models.User, error) {
 	return user, nil
 }
 
+// ListAll returns all users (for debugging only - remove in production)
+func (s *UserService) ListAll() []*models.User {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	users := make([]*models.User, 0, len(s.users))
+	for _, user := range s.users {
+		users = append(users, user)
+	}
+	return users
+}
+

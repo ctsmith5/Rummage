@@ -150,8 +150,8 @@ class CreateSaleRequest {
       'address': address,
       'latitude': latitude,
       'longitude': longitude,
-      'start_date': startDate.toIso8601String(),
-      'end_date': endDate.toIso8601String(),
+      'start_date': startDate.toUtc().toIso8601String(),
+      'end_date': endDate.toUtc().toIso8601String(),
     };
   }
 }

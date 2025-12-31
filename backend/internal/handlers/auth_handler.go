@@ -110,6 +110,12 @@ func (h *AuthHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, models.NewSuccessResponse(user))
 }
 
+// ListUsers returns all users (DEBUG ONLY - remove in production)
+func (h *AuthHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
+	users := h.userService.ListAll()
+	writeJSON(w, http.StatusOK, models.NewSuccessResponse(users))
+}
+
 func (h *AuthHandler) generateToken(userID string) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id": userID,

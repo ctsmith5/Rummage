@@ -15,10 +15,31 @@ class SalesService extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
+  void _log(String message, {Object? error, StackTrace? stackTrace}) {
+    final timestamp = DateTime.now().toIso8601String();
+    print('[$timestamp] SalesService: $message');
+    if (error != null) {
+      print('[$timestamp] SalesService ERROR: $error');
+      if (error is ApiException) {
+        print('[$timestamp] SalesService API Error Details:');
+        print('  Status: ${error.statusCode}');
+        print('  Message: ${error.message}');
+        if (error.errors != null) {
+          print('  Validation Errors: ${error.errors}');
+        }
+      }
+    }
+    if (stackTrace != null) {
+      print('[$timestamp] SalesService STACK TRACE:\n$stackTrace');
+    }
+  }
+
   Future<void> loadNearbySales(double lat, double lng, {double radius = 10}) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
+
+    _log('Loading nearby sales: lat=$lat, lng=$lng, radius=$radius');
 
     try {
       final response = await ApiClient.get(
@@ -32,23 +53,29 @@ class SalesService extends ChangeNotifier {
 
       final data = response['data'] as List<dynamic>?;
       _sales = data?.map((e) => GarageSale.fromJson(e)).toList() ?? [];
+      _log('Loaded ${_sales.length} sales');
       _isLoading = false;
       notifyListeners();
-    } catch (e) {
-      _error = 'Failed to load sales';
+    } catch (e, stackTrace) {
+      _log('Failed to load sales', error: e, stackTrace: stackTrace);
+      _error = _getErrorMessage(e);
       _isLoading = false;
       notifyListeners();
     }
   }
 
   Future<GarageSale?> getSaleDetails(String saleId) async {
+    _log('Getting sale details: $saleId');
+    
     try {
       final response = await ApiClient.get('/sales/$saleId');
       _selectedSale = GarageSale.fromJson(response['data']);
+      _log('Loaded sale details: ${_selectedSale?.title}');
       notifyListeners();
       return _selectedSale;
-    } catch (e) {
-      _error = 'Failed to load sale details';
+    } catch (e, stackTrace) {
+      _log('Failed to load sale details', error: e, stackTrace: stackTrace);
+      _error = _getErrorMessage(e);
       notifyListeners();
       return null;
     }
@@ -59,15 +86,22 @@ class SalesService extends ChangeNotifier {
     _error = null;
     notifyListeners();
 
+    _log('Creating sale: ${request.title}');
+    _log('Sale data: ${request.toJson()}');
+
     try {
       final response = await ApiClient.post('/sales', body: request.toJson());
+      _log('Create sale response: $response');
+      
       final sale = GarageSale.fromJson(response['data']);
       _sales.add(sale);
+      _log('Sale created successfully: ${sale.id}');
       _isLoading = false;
       notifyListeners();
       return sale;
-    } catch (e) {
-      _error = 'Failed to create sale';
+    } catch (e, stackTrace) {
+      _log('Failed to create sale', error: e, stackTrace: stackTrace);
+      _error = _getErrorMessage(e);
       _isLoading = false;
       notifyListeners();
       return null;
@@ -75,57 +109,75 @@ class SalesService extends ChangeNotifier {
   }
 
   Future<bool> updateSale(String saleId, CreateSaleRequest request) async {
+    _log('Updating sale: $saleId');
+    
     try {
       await ApiClient.put('/sales/$saleId', body: request.toJson());
+      _log('Sale updated successfully');
       await loadNearbySales(0, 0); // Reload sales
       return true;
-    } catch (e) {
-      _error = 'Failed to update sale';
+    } catch (e, stackTrace) {
+      _log('Failed to update sale', error: e, stackTrace: stackTrace);
+      _error = _getErrorMessage(e);
       notifyListeners();
       return false;
     }
   }
 
   Future<bool> deleteSale(String saleId) async {
+    _log('Deleting sale: $saleId');
+    
     try {
       await ApiClient.delete('/sales/$saleId');
       _sales.removeWhere((s) => s.id == saleId);
+      _log('Sale deleted successfully');
       notifyListeners();
       return true;
-    } catch (e) {
-      _error = 'Failed to delete sale';
+    } catch (e, stackTrace) {
+      _log('Failed to delete sale', error: e, stackTrace: stackTrace);
+      _error = _getErrorMessage(e);
       notifyListeners();
       return false;
     }
   }
 
   Future<GarageSale?> startSale(String saleId) async {
+    _log('Starting sale: $saleId');
+    
     try {
       final response = await ApiClient.post('/sales/$saleId/start');
       final sale = GarageSale.fromJson(response['data']);
       _updateSaleInList(sale);
+      _log('Sale started successfully');
       return sale;
-    } catch (e) {
-      _error = 'Failed to start sale';
+    } catch (e, stackTrace) {
+      _log('Failed to start sale', error: e, stackTrace: stackTrace);
+      _error = _getErrorMessage(e);
       notifyListeners();
       return null;
     }
   }
 
   Future<GarageSale?> endSale(String saleId) async {
+    _log('Ending sale: $saleId');
+    
     try {
       final response = await ApiClient.post('/sales/$saleId/end');
       final sale = GarageSale.fromJson(response['data']);
       _updateSaleInList(sale);
+      _log('Sale ended successfully');
       return sale;
-    } catch (e) {
-      _error = 'Failed to end sale';
+    } catch (e, stackTrace) {
+      _log('Failed to end sale', error: e, stackTrace: stackTrace);
+      _error = _getErrorMessage(e);
       notifyListeners();
       return null;
     }
   }
 
   Future<Item?> addItem(String saleId, CreateItemRequest request) async {
+    _log('Adding item to sale $saleId: ${request.name}');
+    
     try {
       final response = await ApiClient.post(
         '/sales/$saleId/items',
@@ -140,15 +192,19 @@ class SalesService extends ChangeNotifier {
         notifyListeners();
       }
       
+      _log('Item added successfully: ${item.id}');
       return item;
-    } catch (e) {
-      _error = 'Failed to add item';
+    } catch (e, stackTrace) {
+      _log('Failed to add item', error: e, stackTrace: stackTrace);
+      _error = _getErrorMessage(e);
       notifyListeners();
       return null;
     }
   }
 
   Future<bool> deleteItem(String saleId, String itemId) async {
+    _log('Deleting item $itemId from sale $saleId');
+    
     try {
       await ApiClient.delete('/sales/$saleId/items/$itemId');
       
@@ -159,9 +215,11 @@ class SalesService extends ChangeNotifier {
         notifyListeners();
       }
       
+      _log('Item deleted successfully');
       return true;
-    } catch (e) {
-      _error = 'Failed to delete item';
+    } catch (e, stackTrace) {
+      _log('Failed to delete item', error: e, stackTrace: stackTrace);
+      _error = _getErrorMessage(e);
       notifyListeners();
       return false;
     }
@@ -178,9 +236,15 @@ class SalesService extends ChangeNotifier {
     notifyListeners();
   }
 
+  String _getErrorMessage(Object error) {
+    if (error is ApiException) {
+      return error.message;
+    }
+    return error.toString();
+  }
+
   void clearError() {
     _error = null;
     notifyListeners();
   }
 }
-

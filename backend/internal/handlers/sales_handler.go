@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -25,27 +28,43 @@ func NewSalesHandler(salesService *services.SalesService) *SalesHandler {
 func (h *SalesHandler) CreateSale(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 	if userID == "" {
+		log.Println("[CreateSale] Unauthorized - no user ID in context")
 		writeJSON(w, http.StatusUnauthorized, models.NewErrorResponse("Unauthorized"))
 		return
 	}
+	log.Printf("[CreateSale] User: %s", userID)
 
-	var req models.CreateSaleRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, models.NewErrorResponse("Invalid request body"))
+	// Read and log the raw body for debugging
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("[CreateSale] Error reading body: %v", err)
+		writeJSON(w, http.StatusBadRequest, models.NewErrorResponse("Failed to read request body"))
 		return
 	}
+	log.Printf("[CreateSale] Raw body: %s", string(bodyBytes))
+
+	var req models.CreateSaleRequest
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
+		log.Printf("[CreateSale] JSON decode error: %v", err)
+		writeJSON(w, http.StatusBadRequest, models.NewErrorResponse(fmt.Sprintf("Invalid request body: %v", err)))
+		return
+	}
+	log.Printf("[CreateSale] Parsed request: %+v", req)
 
 	if errors := req.Validate(); len(errors) > 0 {
+		log.Printf("[CreateSale] Validation errors: %v", errors)
 		writeJSON(w, http.StatusBadRequest, models.NewValidationErrorResponse(errors))
 		return
 	}
 
 	sale, err := h.salesService.Create(userID, &req)
 	if err != nil {
+		log.Printf("[CreateSale] Service error: %v", err)
 		writeJSON(w, http.StatusInternalServerError, models.NewErrorResponse("Failed to create sale"))
 		return
 	}
 
+	log.Printf("[CreateSale] Sale created: %s", sale.ID)
 	writeJSON(w, http.StatusCreated, models.NewSuccessResponse(sale))
 }
 

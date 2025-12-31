@@ -59,6 +59,9 @@ func main() {
 			r.Post("/register", authHandler.Register)
 			r.Post("/login", authHandler.Login)
 
+			// DEBUG: List all users (remove in production)
+			r.Get("/users", authHandler.ListUsers)
+
 			// Protected auth routes
 			r.Group(func(r chi.Router) {
 				r.Use(appMiddleware.JWTAuth(cfg.JWTSecret))
