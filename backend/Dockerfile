@@ -29,8 +29,8 @@ RUN apk --no-cache add ca-certificates
 # Copy binary from builder
 COPY --from=builder /app/server .
 
-# Create uploads directory
-RUN mkdir -p uploads
+# Create uploads and data directories
+RUN mkdir -p uploads data
 
 # Expose port (Cloud Run uses PORT env var)
 EXPOSE 8080

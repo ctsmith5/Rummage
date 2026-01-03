@@ -2,12 +2,14 @@ package services
 
 import (
 	"errors"
+	"log"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/rummage/backend/internal/models"
+	"github.com/rummage/backend/internal/storage"
 )
 
 var (
@@ -15,17 +17,69 @@ var (
 	ErrAlreadyFavorited = errors.New("sale already favorited")
 )
 
-type FavoriteService struct {
-	mu           sync.RWMutex
-	favorites    map[string]*models.Favorite // favoriteID -> favorite
-	userFavorites map[string]map[string]string // userID -> saleID -> favoriteID
-	salesService *SalesService
+// FavoriteData represents the persisted favorites data structure
+type FavoriteData struct {
+	Favorites     map[string]*models.Favorite   `json:"favorites"`
+	UserFavorites map[string]map[string]string `json:"user_favorites"`
 }
 
-func NewFavoriteService() *FavoriteService {
-	return &FavoriteService{
+type FavoriteService struct {
+	mu            sync.RWMutex
+	favorites     map[string]*models.Favorite
+	userFavorites map[string]map[string]string
+	salesService  *SalesService
+	store         *storage.JSONStore
+}
+
+func NewFavoriteService(dataDir string) *FavoriteService {
+	store, err := storage.NewJSONStore(dataDir, "favorites.json")
+	if err != nil {
+		log.Printf("Warning: Failed to create favorites store: %v", err)
+	}
+
+	svc := &FavoriteService{
 		favorites:     make(map[string]*models.Favorite),
 		userFavorites: make(map[string]map[string]string),
+		store:         store,
+	}
+
+	// Load existing data
+	if store != nil {
+		svc.loadFromStore()
+	}
+
+	return svc
+}
+
+func (s *FavoriteService) loadFromStore() {
+	var data FavoriteData
+	if err := s.store.Load(&data); err != nil {
+		log.Printf("Warning: Failed to load favorites from store: %v", err)
+		return
+	}
+
+	if data.Favorites != nil {
+		s.favorites = data.Favorites
+	}
+	if data.UserFavorites != nil {
+		s.userFavorites = data.UserFavorites
+	}
+
+	log.Printf("Loaded %d favorites from persistent storage", len(s.favorites))
+}
+
+func (s *FavoriteService) saveToStore() {
+	if s.store == nil {
+		return
+	}
+
+	data := FavoriteData{
+		Favorites:     s.favorites,
+		UserFavorites: s.userFavorites,
+	}
+
+	if err := s.store.Save(data); err != nil {
+		log.Printf("Warning: Failed to save favorites to store: %v", err)
 	}
 }
 
@@ -59,6 +113,7 @@ func (s *FavoriteService) AddFavorite(userID, saleID string) (*models.Favorite, 
 	}
 	s.userFavorites[userID][saleID] = favorite.ID
 
+	s.saveToStore()
 	return favorite, nil
 }
 
@@ -79,6 +134,7 @@ func (s *FavoriteService) RemoveFavorite(userID, saleID string) error {
 	delete(s.favorites, favoriteID)
 	delete(s.userFavorites[userID], saleID)
 
+	s.saveToStore()
 	return nil
 }
 

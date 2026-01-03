@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/rummage/backend/internal/models"
+	"github.com/rummage/backend/internal/storage"
 )
 
 var (
@@ -17,16 +19,68 @@ var (
 	ErrUnauthorized = errors.New("unauthorized to modify this sale")
 )
 
-type SalesService struct {
-	mu    sync.RWMutex
-	sales map[string]*models.GarageSale // In-memory storage (replace with DB later)
-	items map[string]*models.Item       // itemID -> item
+// SalesData represents the persisted sales data structure
+type SalesData struct {
+	Sales map[string]*models.GarageSale `json:"sales"`
+	Items map[string]*models.Item       `json:"items"`
 }
 
-func NewSalesService() *SalesService {
-	return &SalesService{
+type SalesService struct {
+	mu    sync.RWMutex
+	sales map[string]*models.GarageSale
+	items map[string]*models.Item
+	store *storage.JSONStore
+}
+
+func NewSalesService(dataDir string) *SalesService {
+	store, err := storage.NewJSONStore(dataDir, "sales.json")
+	if err != nil {
+		log.Printf("Warning: Failed to create sales store: %v", err)
+	}
+
+	svc := &SalesService{
 		sales: make(map[string]*models.GarageSale),
 		items: make(map[string]*models.Item),
+		store: store,
+	}
+
+	// Load existing data
+	if store != nil {
+		svc.loadFromStore()
+	}
+
+	return svc
+}
+
+func (s *SalesService) loadFromStore() {
+	var data SalesData
+	if err := s.store.Load(&data); err != nil {
+		log.Printf("Warning: Failed to load sales from store: %v", err)
+		return
+	}
+
+	if data.Sales != nil {
+		s.sales = data.Sales
+	}
+	if data.Items != nil {
+		s.items = data.Items
+	}
+
+	log.Printf("Loaded %d sales and %d items from persistent storage", len(s.sales), len(s.items))
+}
+
+func (s *SalesService) saveToStore() {
+	if s.store == nil {
+		return
+	}
+
+	data := SalesData{
+		Sales: s.sales,
+		Items: s.items,
+	}
+
+	if err := s.store.Save(data); err != nil {
+		log.Printf("Warning: Failed to save sales to store: %v", err)
 	}
 }
 
@@ -50,6 +104,7 @@ func (s *SalesService) Create(userID string, req *models.CreateSaleRequest) (*mo
 	}
 
 	s.sales[sale.ID] = sale
+	s.saveToStore()
 	return sale, nil
 }
 
@@ -90,6 +145,7 @@ func (s *SalesService) Update(userID, saleID string, req *models.UpdateSaleReque
 	sale.StartDate = req.StartDate
 	sale.EndDate = req.EndDate
 
+	s.saveToStore()
 	return sale, nil
 }
 
@@ -114,6 +170,7 @@ func (s *SalesService) Delete(userID, saleID string) error {
 	}
 
 	delete(s.sales, saleID)
+	s.saveToStore()
 	return nil
 }
 
@@ -131,6 +188,7 @@ func (s *SalesService) StartSale(userID, saleID string) (*models.GarageSale, err
 	}
 
 	sale.IsActive = true
+	s.saveToStore()
 	return sale, nil
 }
 
@@ -148,6 +206,7 @@ func (s *SalesService) EndSale(userID, saleID string) (*models.GarageSale, error
 	}
 
 	sale.IsActive = false
+	s.saveToStore()
 	return sale, nil
 }
 
@@ -213,6 +272,7 @@ func (s *SalesService) AddItem(userID, saleID string, req *models.CreateItemRequ
 	}
 
 	s.items[item.ID] = item
+	s.saveToStore()
 	return item, nil
 }
 
@@ -235,6 +295,7 @@ func (s *SalesService) DeleteItem(userID, saleID, itemID string) error {
 	}
 
 	delete(s.items, itemID)
+	s.saveToStore()
 	return nil
 }
 
