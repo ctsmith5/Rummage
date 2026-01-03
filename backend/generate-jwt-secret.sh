@@ -14,3 +14,4 @@ echo "Or set it as an environment variable:"
 echo "  export JWT_SECRET=\"$SECRET\""
 
 
+

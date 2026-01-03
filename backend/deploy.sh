@@ -44,3 +44,4 @@ echo "Get your service URL with:"
 echo "  gcloud run services describe rummage-backend --region us-central1 --format 'value(status.url)'"
 
 
+

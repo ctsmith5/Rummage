@@ -19,3 +19,4 @@ Write-Host "Or set it as an environment variable:" -ForegroundColor Cyan
 Write-Host "  `$env:JWT_SECRET=`"$secret`"" -ForegroundColor White
 
 
+
