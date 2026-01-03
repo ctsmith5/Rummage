@@ -8,9 +8,23 @@ import 'services/location_service.dart';
 import 'services/favorite_service.dart';
 import 'screens/splash_screen.dart';
 
-void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  runApp(const RummageApp());
+void main() async {
+  try {
+    WidgetsFlutterBinding.ensureInitialized();
+    
+    // Add crash protection
+    FlutterError.onError = (FlutterErrorDetails details) {
+      print('Flutter Error: ${details.exception}');
+      print('Stack trace: ${details.stack}');
+    };
+    
+    runApp(const RummageApp());
+  } catch (e, stackTrace) {
+    print('Main initialization error: $e');
+    print('Stack trace: $stackTrace');
+    // Still try to run the app
+    runApp(const RummageApp());
+  }
 }
 
 class RummageApp extends StatelessWidget {

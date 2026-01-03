@@ -51,5 +51,12 @@
 	<string>Rummage uses your location to notify you of nearby garage sales.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Rummage uses your location to find and notify you of nearby garage sales.</string>
+	<key>UISceneDelegate</key>
+	<false/>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+	</dict>
 </dict>
 </plist>

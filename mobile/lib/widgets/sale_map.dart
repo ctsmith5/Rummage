@@ -92,10 +92,10 @@ class _SaleMapState extends State<SaleMap> {
       onMapCreated: (controller) {
         _mapController = controller;
         if (isDarkMode) {
-          controller.setMapStyle(MapStyles.darkStyle);
+          controller.setMapStyle(MapStyles.darkMapStyle);
         }
       },
-      style: isDarkMode ? MapStyles.darkStyle : null,
+      style: isDarkMode ? MapStyles.darkMapStyle : null,
     );
   }
 

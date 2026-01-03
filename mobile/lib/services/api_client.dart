@@ -1,12 +1,11 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ApiClient {
-  // Development: Use Cloud Run deployed backend
-  // For local testing, change back to: 'http://localhost:8080/api'
   static const String baseUrl = 'https://rummage-backend-287868745320.us-central1.run.app/api';
   static const _storage = FlutterSecureStorage();
   static const _tokenKey = 'auth_token';
@@ -67,11 +66,15 @@ class ApiClient {
     _log('GET $uri');
     
     try {
-      final response = await http.get(uri, headers: headers);
+      final response = await http.get(uri, headers: headers)
+          .timeout(const Duration(seconds: 10));
       return _handleResponse(response, 'GET', endpoint);
     } catch (e, stackTrace) {
       _log('GET $endpoint failed', error: e, stackTrace: stackTrace);
-      rethrow;
+      throw ApiException(
+        statusCode: 0,
+        message: 'Network error: Unable to connect to server',
+      );
     }
   }
 
@@ -91,11 +94,14 @@ class ApiClient {
         uri,
         headers: headers,
         body: body != null ? jsonEncode(body) : null,
-      );
+      ).timeout(const Duration(seconds: 10));
       return _handleResponse(response, 'POST', endpoint);
     } catch (e, stackTrace) {
       _log('POST $endpoint failed', error: e, stackTrace: stackTrace);
-      rethrow;
+      throw ApiException(
+        statusCode: 0,
+        message: 'Network error: Unable to connect to server',
+      );
     }
   }
 
