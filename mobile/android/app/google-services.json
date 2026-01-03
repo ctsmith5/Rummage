@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "131071073084",
+    "project_id": "rummage-31244",
+    "storage_bucket": "rummage-31244.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:131071073084:android:ca23a75490d3fe63399c39",
+        "android_client_info": {
+          "package_name": "com.example.rummage"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCmt5zzhH-KZm3_g8hXu202OlsHYQis8eo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

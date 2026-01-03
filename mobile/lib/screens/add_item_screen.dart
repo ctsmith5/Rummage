@@ -5,6 +5,7 @@ import 'dart:io';
 
 import '../models/item.dart';
 import '../services/sales_service.dart';
+import '../services/firebase_storage_service.dart';
 import '../theme/app_colors.dart';
 
 class AddItemScreen extends StatefulWidget {
@@ -28,6 +29,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
   String _selectedCategory = 'Other';
   XFile? _selectedImage;
   bool _isLoading = false;
+  double _uploadProgress = 0;
+  String _loadingMessage = '';
 
   final ImagePicker _imagePicker = ImagePicker();
 
@@ -114,11 +117,45 @@ class _AddItemScreenState extends State<AddItemScreen> {
 
     setState(() {
       _isLoading = true;
+      _uploadProgress = 0;
+      _loadingMessage = 'Preparing...';
     });
 
-    // TODO: Upload image first if selected
     String imageUrl = '';
-    // In a real app, you would upload the image here and get the URL
+
+    // Upload image to Firebase Storage if selected
+    if (_selectedImage != null) {
+      setState(() {
+        _loadingMessage = 'Uploading image...';
+      });
+
+      imageUrl = await FirebaseStorageService.uploadItemImage(
+        imageFile: _selectedImage!,
+        saleId: widget.saleId,
+        onProgress: (progress) {
+          setState(() {
+            _uploadProgress = progress;
+          });
+        },
+      ) ?? '';
+
+      if (imageUrl.isEmpty && mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to upload image. Please try again.'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+        return;
+      }
+    }
+
+    setState(() {
+      _loadingMessage = 'Creating item...';
+    });
 
     final request = CreateItemRequest(
       name: _nameController.text.trim(),
@@ -300,13 +337,26 @@ class _AddItemScreenState extends State<AddItemScreen> {
             ElevatedButton(
               onPressed: _isLoading ? null : _submit,
               child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
+                  ? Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            value: _uploadProgress > 0 ? _uploadProgress : null,
+                            valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          _uploadProgress > 0
+                              ? '${(_uploadProgress * 100).toInt()}%'
+                              : _loadingMessage,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ],
                     )
                   : const Text('Add Item'),
             ),
