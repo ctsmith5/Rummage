@@ -5,7 +5,9 @@ import 'package:intl/intl.dart';
 import '../models/garage_sale.dart';
 import '../services/sales_service.dart';
 import '../services/location_service.dart';
+import '../services/places_service.dart';
 import '../theme/app_colors.dart';
+import '../widgets/address_autocomplete_field.dart';
 
 class CreateSaleScreen extends StatefulWidget {
   const CreateSaleScreen({super.key});
@@ -102,6 +104,21 @@ class _CreateSaleScreenState extends State<CreateSaleScreen> {
         const SnackBar(content: Text('Location updated')),
       );
     }
+  }
+
+  void _onPlaceSelected(PlaceDetails details) {
+    setState(() {
+      _latitude = details.latitude;
+      _longitude = details.longitude;
+    });
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Location set: ${details.address}'),
+        backgroundColor: AppColors.success,
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   Future<void> _submit() async {
@@ -216,20 +233,19 @@ class _CreateSaleScreenState extends State<CreateSaleScreen> {
 
             const SizedBox(height: 16),
 
-            // Address
-            TextFormField(
+            // Address with autocomplete
+            AddressAutocompleteField(
               controller: _addressController,
-              decoration: const InputDecoration(
-                labelText: 'Address',
-                hintText: '123 Main St, City, State',
-              ),
+              userLatitude: _latitude != 0 ? _latitude : null,
+              userLongitude: _longitude != 0 ? _longitude : null,
+              onPlaceSelected: _onPlaceSelected,
+              hintText: 'Start typing an address...',
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
                   return 'Please enter an address';
                 }
                 return null;
               },
-              textInputAction: TextInputAction.done,
             ),
 
             const SizedBox(height: 16),

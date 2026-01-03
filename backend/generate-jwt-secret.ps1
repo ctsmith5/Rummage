@@ -20,3 +20,4 @@ Write-Host "  `$env:JWT_SECRET=`"$secret`"" -ForegroundColor White
 
 
 
+

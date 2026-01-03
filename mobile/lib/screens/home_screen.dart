@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -6,7 +8,7 @@ import '../services/auth_service.dart';
 import '../services/sales_service.dart';
 import '../services/location_service.dart';
 import '../theme/app_colors.dart';
-import '../widgets/sale_card.dart';
+import '../widgets/map_pin_card.dart';
 import '../widgets/sale_map.dart';
 import 'saved_screen.dart';
 import 'sale_details_screen.dart';
@@ -25,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _selectedFilter = 'All';
   GarageSale? _selectedSale;
+  Timer? _boundsDebounce;
 
   @override
   void initState() {
@@ -48,7 +51,22 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _boundsDebounce?.cancel();
     super.dispose();
+  }
+
+  void _onMapBoundsChanged(MapBounds bounds) {
+    // Debounce the bounds change to avoid too many API calls while panning
+    _boundsDebounce?.cancel();
+    _boundsDebounce = Timer(const Duration(milliseconds: 500), () {
+      final salesService = context.read<SalesService>();
+      salesService.loadSalesByBounds(
+        minLat: bounds.minLat,
+        maxLat: bounds.maxLat,
+        minLng: bounds.minLng,
+        maxLng: bounds.maxLng,
+      );
+    });
   }
 
   void _onSaleSelected(GarageSale sale) {
@@ -219,6 +237,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     userLongitude: locationService.longitude,
                     onSaleSelected: _onSaleSelected,
                     selectedSale: _selectedSale,
+                    onBoundsChanged: _onMapBoundsChanged,
                   ),
                   
                   // Selected sale card at bottom
@@ -227,10 +246,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       left: 16,
                       right: 16,
                       bottom: 16,
-                      child: SaleCard(
+                      child: MapPinCard(
                         sale: _selectedSale!,
                         onTap: () => _navigateToDetails(_selectedSale!),
-                        showDetailsButton: true,
+                        onClose: () => setState(() => _selectedSale = null),
                       ),
                     ),
                 ],

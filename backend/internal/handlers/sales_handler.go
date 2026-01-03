@@ -194,6 +194,28 @@ func (h *SalesHandler) ListSales(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, models.NewSuccessResponse(sales))
 }
 
+func (h *SalesHandler) ListSalesByBounds(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+
+	minLat, err1 := strconv.ParseFloat(query.Get("minLat"), 64)
+	maxLat, err2 := strconv.ParseFloat(query.Get("maxLat"), 64)
+	minLng, err3 := strconv.ParseFloat(query.Get("minLng"), 64)
+	maxLng, err4 := strconv.ParseFloat(query.Get("maxLng"), 64)
+
+	if err1 != nil || err2 != nil || err3 != nil || err4 != nil {
+		writeJSON(w, http.StatusBadRequest, models.NewErrorResponse("Missing or invalid bounding box parameters (minLat, maxLat, minLng, maxLng)"))
+		return
+	}
+
+	sales, err := h.salesService.ListByBounds(minLat, maxLat, minLng, maxLng)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.NewErrorResponse("Failed to list sales"))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, models.NewSuccessResponse(sales))
+}
+
 func (h *SalesHandler) AddItem(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 	saleID := chi.URLParam(r, "saleId")

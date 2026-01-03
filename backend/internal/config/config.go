@@ -10,6 +10,7 @@ type Config struct {
 	JWTSecret       string
 	JWTExpiration   time.Duration
 	UploadDir       string
+	DataDir         string
 	MaxUploadSizeMB int64
 }
 
@@ -23,6 +24,7 @@ func Load() *Config {
 		JWTSecret:       getEnv("JWT_SECRET", "your-secret-key-change-in-production"),
 		JWTExpiration:   24 * time.Hour,
 		UploadDir:       getEnv("UPLOAD_DIR", "./uploads"),
+		DataDir:         getEnv("DATA_DIR", "./data"),
 		MaxUploadSizeMB: 10,
 	}
 }

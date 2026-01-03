@@ -64,6 +64,42 @@ class SalesService extends ChangeNotifier {
     }
   }
 
+  Future<void> loadSalesByBounds({
+    required double minLat,
+    required double maxLat,
+    required double minLng,
+    required double maxLng,
+  }) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    _log('Loading sales by bounds: minLat=$minLat, maxLat=$maxLat, minLng=$minLng, maxLng=$maxLng');
+
+    try {
+      final response = await ApiClient.get(
+        '/sales/bounds',
+        queryParams: {
+          'minLat': minLat.toString(),
+          'maxLat': maxLat.toString(),
+          'minLng': minLng.toString(),
+          'maxLng': maxLng.toString(),
+        },
+      );
+
+      final data = response['data'] as List<dynamic>?;
+      _sales = data?.map((e) => GarageSale.fromJson(e)).toList() ?? [];
+      _log('Loaded ${_sales.length} sales within bounds');
+      _isLoading = false;
+      notifyListeners();
+    } catch (e, stackTrace) {
+      _log('Failed to load sales by bounds', error: e, stackTrace: stackTrace);
+      _error = _getErrorMessage(e);
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
   Future<GarageSale?> getSaleDetails(String saleId) async {
     _log('Getting sale details: $saleId');
     

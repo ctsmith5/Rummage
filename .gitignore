@@ -131,4 +131,6 @@ logs/
 tmp/
 temp/
 uploads/
+data/
+backend/data/
 

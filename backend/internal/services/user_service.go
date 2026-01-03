@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"log"
 	"sync"
 	"time"
 
@@ -9,24 +10,77 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/rummage/backend/internal/models"
+	"github.com/rummage/backend/internal/storage"
 )
 
 var (
-	ErrUserNotFound     = errors.New("user not found")
-	ErrEmailExists      = errors.New("email already registered")
-	ErrInvalidPassword  = errors.New("invalid password")
+	ErrUserNotFound    = errors.New("user not found")
+	ErrEmailExists     = errors.New("email already registered")
+	ErrInvalidPassword = errors.New("invalid password")
 )
 
-type UserService struct {
-	mu    sync.RWMutex
-	users map[string]*models.User // In-memory storage (replace with DB later)
-	byEmail map[string]string     // email -> userID mapping
+// UserData represents the persisted user data structure
+type UserData struct {
+	Users   map[string]*models.User `json:"users"`
+	ByEmail map[string]string       `json:"by_email"`
 }
 
-func NewUserService() *UserService {
-	return &UserService{
+type UserService struct {
+	mu      sync.RWMutex
+	users   map[string]*models.User
+	byEmail map[string]string
+	store   *storage.JSONStore
+}
+
+func NewUserService(dataDir string) *UserService {
+	store, err := storage.NewJSONStore(dataDir, "users.json")
+	if err != nil {
+		log.Printf("Warning: Failed to create user store: %v", err)
+	}
+
+	svc := &UserService{
 		users:   make(map[string]*models.User),
 		byEmail: make(map[string]string),
+		store:   store,
+	}
+
+	// Load existing data
+	if store != nil {
+		svc.loadFromStore()
+	}
+
+	return svc
+}
+
+func (s *UserService) loadFromStore() {
+	var data UserData
+	if err := s.store.Load(&data); err != nil {
+		log.Printf("Warning: Failed to load users from store: %v", err)
+		return
+	}
+
+	if data.Users != nil {
+		s.users = data.Users
+	}
+	if data.ByEmail != nil {
+		s.byEmail = data.ByEmail
+	}
+
+	log.Printf("Loaded %d users from persistent storage", len(s.users))
+}
+
+func (s *UserService) saveToStore() {
+	if s.store == nil {
+		return
+	}
+
+	data := UserData{
+		Users:   s.users,
+		ByEmail: s.byEmail,
+	}
+
+	if err := s.store.Save(data); err != nil {
+		log.Printf("Warning: Failed to save users to store: %v", err)
 	}
 }
 
@@ -55,6 +109,9 @@ func (s *UserService) Register(req *models.RegisterRequest) (*models.User, error
 
 	s.users[user.ID] = user
 	s.byEmail[user.Email] = user.ID
+
+	// Persist to storage
+	s.saveToStore()
 
 	return user, nil
 }

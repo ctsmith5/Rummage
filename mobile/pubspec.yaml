@@ -28,6 +28,10 @@ dependencies:
   image_picker: ^1.0.4
   cached_network_image: ^3.3.0
   
+  # Firebase
+  firebase_core: ^3.8.1
+  firebase_storage: ^12.3.7
+  
   # Storage
   flutter_secure_storage: ^9.0.0
   shared_preferences: ^2.2.2

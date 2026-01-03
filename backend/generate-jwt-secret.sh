@@ -15,3 +15,4 @@ echo "  export JWT_SECRET=\"$SECRET\""
 
 
 
+

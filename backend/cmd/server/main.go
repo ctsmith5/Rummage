@@ -18,10 +18,10 @@ import (
 func main() {
 	cfg := config.Load()
 
-	// Initialize services
-	userService := services.NewUserService()
-	salesService := services.NewSalesService()
-	favoriteService := services.NewFavoriteService()
+	// Initialize services with persistent storage
+	userService := services.NewUserService(cfg.DataDir)
+	salesService := services.NewSalesService(cfg.DataDir)
+	favoriteService := services.NewFavoriteService(cfg.DataDir)
 	imageService := services.NewImageService(cfg.UploadDir)
 
 	// Initialize handlers
@@ -76,6 +76,7 @@ func main() {
 			// Sales routes
 			r.Route("/sales", func(r chi.Router) {
 				r.Get("/", salesHandler.ListSales)
+				r.Get("/bounds", salesHandler.ListSalesByBounds)
 				r.Post("/", salesHandler.CreateSale)
 
 				r.Route("/{saleId}", func(r chi.Router) {
