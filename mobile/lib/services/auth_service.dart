@@ -14,9 +14,16 @@ class AuthService extends ChangeNotifier {
   String? get error => _error;
 
   Future<void> checkAuthStatus() async {
-    final token = await ApiClient.getToken();
-    if (token != null) {
-      await getProfile();
+    try {
+      final token = await ApiClient.getToken();
+      if (token != null) {
+        await getProfile();
+      }
+    } catch (e) {
+      // Handle network/API errors gracefully
+      print('Auth check failed: $e');
+      _currentUser = null;
+      await ApiClient.clearToken();
     }
   }
 
