@@ -1,32 +1,26 @@
-# Git
-.git
+# Git (exclude git history, but files are tracked)
+.git/
 .gitignore
 
-# IDE
-.idea
-.vscode
+# IDE files
+.idea/
+.vscode/
 *.swp
 *.swo
+*.sublime-*
 
-# Test files
-*_test.go
-test/
-
-# Local uploads
-uploads/*
-!uploads/.gitkeep
-
-# Build artifacts
-server
+# Local build artifacts (Windows)
 *.exe
 *.dll
-*.so
-
-# Documentation (keep DEPLOY.md)
-*.md
-!DEPLOY.md
+server.exe
+server
 
 # Environment files
 .env
 .env.local
+*.env
 
+# Local uploads directory (not needed in container)
+uploads/
+
+# Keep all source code - don't exclude cmd/, internal/, etc.

@@ -8,7 +8,7 @@
 *.swp
 *.swo
 
-# Test files
+# Test files (but keep cmd directory)
 *_test.go
 
 # Local uploads
@@ -17,5 +17,9 @@ uploads/*
 
 # Documentation
 *.md
+
+# Explicitly include cmd directory
+!cmd/
+
 
 

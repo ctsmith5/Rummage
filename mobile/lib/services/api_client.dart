@@ -6,7 +6,6 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ApiClient {
-  // Use the live backend URL for all platforms
   static const String baseUrl = 'https://rummage-backend-287868745320.us-central1.run.app/api';
   static const _storage = FlutterSecureStorage();
   static const _tokenKey = 'auth_token';
