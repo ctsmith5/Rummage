@@ -17,6 +17,21 @@ bool get isGoogleMapsSupported {
   }
 }
 
+/// Represents the visible bounds of the map
+class MapBounds {
+  final double minLat;
+  final double maxLat;
+  final double minLng;
+  final double maxLng;
+
+  const MapBounds({
+    required this.minLat,
+    required this.maxLat,
+    required this.minLng,
+    required this.maxLng,
+  });
+}
+
 /// Main map widget - uses Google Maps on Android/iOS/Web, placeholder on desktop
 class SaleMap extends StatefulWidget {
   final List<GarageSale> sales;
@@ -24,6 +39,7 @@ class SaleMap extends StatefulWidget {
   final double userLongitude;
   final Function(GarageSale)? onSaleSelected;
   final GarageSale? selectedSale;
+  final Function(MapBounds)? onBoundsChanged;
 
   const SaleMap({
     super.key,
@@ -32,6 +48,7 @@ class SaleMap extends StatefulWidget {
     required this.userLongitude,
     this.onSaleSelected,
     this.selectedSale,
+    this.onBoundsChanged,
   });
 
   @override
@@ -40,6 +57,20 @@ class SaleMap extends StatefulWidget {
 
 class _SaleMapState extends State<SaleMap> {
   GoogleMapController? _mapController;
+  bool _isInitialLoad = true;
+
+  Future<void> _onCameraIdle() async {
+    if (_mapController == null) return;
+    
+    final bounds = await _mapController!.getVisibleRegion();
+    final mapBounds = MapBounds(
+      minLat: bounds.southwest.latitude,
+      maxLat: bounds.northeast.latitude,
+      minLng: bounds.southwest.longitude,
+      maxLng: bounds.northeast.longitude,
+    );
+    widget.onBoundsChanged?.call(mapBounds);
+  }
   
   Set<Marker> _buildMarkers() {
     return widget.sales.map((sale) {
@@ -89,12 +120,19 @@ class _SaleMapState extends State<SaleMap> {
       mapToolbarEnabled: false,
       zoomControlsEnabled: true,
       compassEnabled: true,
-      onMapCreated: (controller) {
+      onMapCreated: (controller) async {
         _mapController = controller;
         if (isDarkMode) {
           controller.setMapStyle(MapStyles.darkMapStyle);
         }
+        // Trigger initial bounds load after a short delay to let map settle
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (_isInitialLoad) {
+          _isInitialLoad = false;
+          _onCameraIdle();
+        }
       },
+      onCameraIdle: _onCameraIdle,
       style: isDarkMode ? MapStyles.darkMapStyle : null,
     );
   }

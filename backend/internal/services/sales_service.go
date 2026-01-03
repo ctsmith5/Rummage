@@ -169,6 +169,25 @@ func (s *SalesService) ListNearby(lat, lng, radiusMi float64) ([]*models.GarageS
 	return results, nil
 }
 
+// ListByBounds returns all sales within a geographic bounding box
+func (s *SalesService) ListByBounds(minLat, maxLat, minLng, maxLng float64) ([]*models.GarageSale, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []*models.GarageSale
+
+	for _, sale := range s.sales {
+		if sale.Latitude >= minLat && sale.Latitude <= maxLat &&
+			sale.Longitude >= minLng && sale.Longitude <= maxLng {
+			saleCopy := *sale
+			saleCopy.Items = s.getItemsForSale(sale.ID)
+			results = append(results, &saleCopy)
+		}
+	}
+
+	return results, nil
+}
+
 func (s *SalesService) AddItem(userID, saleID string, req *models.CreateItemRequest) (*models.Item, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
