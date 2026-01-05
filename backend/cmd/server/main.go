@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -18,14 +19,24 @@ import (
 func main() {
 	cfg := config.Load()
 
+	// Firebase Auth (server-side verification of ID tokens)
+	authClient, err := appMiddleware.NewFirebaseAuthClient(
+		context.Background(),
+		appMiddleware.FirebaseAuthConfig{
+			ProjectID:       os.Getenv("FIREBASE_PROJECT_ID"),
+			CredentialsJSON: os.Getenv("FIREBASE_CREDENTIALS_JSON"),
+		},
+	)
+	if err != nil {
+		log.Printf("Warning: failed to initialize Firebase Auth client: %v", err)
+	}
+
 	// Initialize services with persistent storage
-	userService := services.NewUserService(cfg.DataDir)
 	salesService := services.NewSalesService(cfg.DataDir)
 	favoriteService := services.NewFavoriteService(cfg.DataDir)
 	imageService := services.NewImageService(cfg.UploadDir)
 
 	// Initialize handlers
-	authHandler := handlers.NewAuthHandler(userService, cfg.JWTSecret, cfg.JWTExpiration)
 	salesHandler := handlers.NewSalesHandler(salesService)
 	favoriteHandler := handlers.NewFavoriteHandler(favoriteService)
 	imageHandler := handlers.NewImageHandler(imageService, cfg.MaxUploadSizeMB)
@@ -54,24 +65,9 @@ func main() {
 
 	// API routes
 	r.Route("/api", func(r chi.Router) {
-		// Auth routes (public)
-		r.Route("/auth", func(r chi.Router) {
-			r.Post("/register", authHandler.Register)
-			r.Post("/login", authHandler.Login)
-
-			// DEBUG: List all users (remove in production)
-			r.Get("/users", authHandler.ListUsers)
-
-			// Protected auth routes
-			r.Group(func(r chi.Router) {
-				r.Use(appMiddleware.JWTAuth(cfg.JWTSecret))
-				r.Get("/profile", authHandler.GetProfile)
-			})
-		})
-
 		// Protected routes
 		r.Group(func(r chi.Router) {
-			r.Use(appMiddleware.JWTAuth(cfg.JWTSecret))
+			r.Use(appMiddleware.FirebaseAuth(authClient))
 
 			// Sales routes
 			r.Route("/sales", func(r chi.Router) {

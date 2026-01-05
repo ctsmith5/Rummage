@@ -11,26 +11,26 @@ import 'services/favorite_service.dart';
 import 'screens/splash_screen.dart';
 
 void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Add crash protection (still useful in profile on-device)
+  FlutterError.onError = (FlutterErrorDetails details) {
+    print('Flutter Error: ${details.exception}');
+    print('Stack trace: ${details.stack}');
+  };
+
   try {
-    WidgetsFlutterBinding.ensureInitialized();
-    
     // Initialize Firebase with generated options
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    
-    // Add crash protection
-    FlutterError.onError = (FlutterErrorDetails details) {
-      print('Flutter Error: ${details.exception}');
-      print('Stack trace: ${details.stack}');
-    };
-    
     runApp(const RummageApp());
   } catch (e, stackTrace) {
-    print('Main initialization error: $e');
+    // If Firebase isn't configured correctly (common on iOS without GoogleService-Info.plist),
+    // the app should NOT continue into runtime and then fail with opaque Auth errors.
+    print('Firebase initialization error: $e');
     print('Stack trace: $stackTrace');
-    // Still try to run the app
-    runApp(const RummageApp());
+    runApp(FirebaseInitErrorApp(error: e.toString()));
   }
 }
 
@@ -54,6 +54,43 @@ class RummageApp extends StatelessWidget {
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
         home: const SplashScreen(),
+      ),
+    );
+  }
+}
+
+class FirebaseInitErrorApp extends StatelessWidget {
+  final String error;
+
+  const FirebaseInitErrorApp({super.key, required this.error});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        appBar: AppBar(title: const Text('Firebase not configured')),
+        body: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Firebase failed to initialize.',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'On iOS this is often caused by a missing GoogleService-Info.plist. '
+                'Add it to mobile/ios/Runner/ and ensure it is included in the Runner target, then rebuild.',
+              ),
+              const SizedBox(height: 16),
+              const Text('Error details:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              SelectableText(error),
+            ],
+          ),
+        ),
       ),
     );
   }

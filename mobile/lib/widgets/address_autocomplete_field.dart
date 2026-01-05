@@ -33,6 +33,7 @@ class AddressAutocompleteField extends StatefulWidget {
 class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
   final LayerLink _layerLink = LayerLink();
   final FocusNode _focusNode = FocusNode();
+  final GlobalKey _textFieldKey = GlobalKey();
   OverlayEntry? _overlayEntry;
   List<PlacePrediction> _predictions = [];
   bool _isLoading = false;
@@ -89,6 +90,7 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
       _isLoading = true;
     });
 
+    debugPrint('🔍 Fetching autocomplete predictions for: "$input"');
     final predictions = await PlacesService.getAutocompletePredictions(
       input,
       sessionToken: _sessionToken,
@@ -98,14 +100,17 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
 
     if (!mounted) return;
 
+    debugPrint('✅ Received ${predictions.length} predictions');
     setState(() {
       _predictions = predictions;
       _isLoading = false;
     });
 
     if (_predictions.isNotEmpty && _focusNode.hasFocus) {
+      debugPrint('📋 Showing overlay with ${_predictions.length} predictions');
       _showOverlay();
     } else {
+      debugPrint('❌ Not showing overlay - predictions: ${_predictions.length}, hasFocus: ${_focusNode.hasFocus}');
       _removeOverlay();
     }
   }
@@ -113,50 +118,64 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
   void _showOverlay() {
     _removeOverlay();
 
-    _overlayEntry = OverlayEntry(
-      builder: (context) => Positioned(
-        width: context.findRenderObject() != null
-            ? (context.findRenderObject() as RenderBox).size.width
-            : 300,
-        child: CompositedTransformFollower(
-          link: _layerLink,
-          showWhenUnlinked: false,
-          offset: const Offset(0, 60),
-          child: Material(
-            elevation: 8,
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              constraints: const BoxConstraints(maxHeight: 250),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: AppColors.primary.withOpacity(0.2),
+    // Wait for the next frame to ensure RenderBox is laid out
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_focusNode.hasFocus || _predictions.isEmpty) {
+        return;
+      }
+
+      // Get the width from the TextFormField's RenderBox
+      final RenderBox? renderBox = _textFieldKey.currentContext?.findRenderObject() as RenderBox?;
+      final width = renderBox?.size.width ?? MediaQuery.of(context).size.width - 32;
+
+      debugPrint('📐 Overlay width: $width, predictions: ${_predictions.length}');
+
+      _overlayEntry = OverlayEntry(
+        builder: (overlayContext) => Positioned(
+          width: width,
+          child: CompositedTransformFollower(
+            link: _layerLink,
+            showWhenUnlinked: false,
+            offset: const Offset(0, 60),
+            child: Material(
+              elevation: 8,
+              borderRadius: BorderRadius.circular(12),
+              color: Colors.transparent,
+              child: Container(
+                constraints: const BoxConstraints(maxHeight: 250),
+                decoration: BoxDecoration(
+                  color: Theme.of(overlayContext).cardColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.primary.withOpacity(0.2),
+                  ),
                 ),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  padding: EdgeInsets.zero,
-                  itemCount: _predictions.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final prediction = _predictions[index];
-                    return _PredictionTile(
-                      prediction: prediction,
-                      onTap: () => _onPredictionSelected(prediction),
-                    );
-                  },
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: _predictions.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final prediction = _predictions[index];
+                      return _PredictionTile(
+                        prediction: prediction,
+                        onTap: () => _onPredictionSelected(prediction),
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
           ),
         ),
-      ),
-    );
+      );
 
-    Overlay.of(context).insert(_overlayEntry!);
+      final overlay = Overlay.of(context);
+      overlay.insert(_overlayEntry!);
+      debugPrint('✅ Overlay inserted successfully');
+    });
   }
 
   void _removeOverlay() {
@@ -196,6 +215,7 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
     return CompositedTransformTarget(
       link: _layerLink,
       child: TextFormField(
+        key: _textFieldKey,
         controller: widget.controller,
         focusNode: _focusNode,
         decoration: InputDecoration(

@@ -84,19 +84,25 @@ class PlacesService {
         final data = json.decode(response.body);
         final status = data['status'] as String;
 
+        debugPrint('🌐 Places API response status: $status');
+        
         if (status == 'OK') {
           final predictions = data['predictions'] as List<dynamic>;
+          debugPrint('✅ Found ${predictions.length} predictions');
           return predictions
               .map((p) => PlacePrediction.fromJson(p as Map<String, dynamic>))
               .toList();
         } else if (status == 'ZERO_RESULTS') {
+          debugPrint('⚠️ Zero results found');
           return [];
         } else {
-          debugPrint('Places API error: $status');
+          debugPrint('❌ Places API error: $status');
+          debugPrint('Response body: ${response.body}');
           return [];
         }
       } else {
-        debugPrint('Places API HTTP error: ${response.statusCode}');
+        debugPrint('❌ Places API HTTP error: ${response.statusCode}');
+        debugPrint('Response body: ${response.body}');
         return [];
       }
     } catch (e) {

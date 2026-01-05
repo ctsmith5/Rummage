@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart' as fb;
 
 import '../models/user.dart';
-import 'api_client.dart';
 
 class AuthService extends ChangeNotifier {
+  final fb.FirebaseAuth _auth = fb.FirebaseAuth.instance;
+
   User? _currentUser;
   bool _isLoading = false;
   String? _error;
@@ -13,18 +15,27 @@ class AuthService extends ChangeNotifier {
   bool get isLoggedIn => _currentUser != null;
   String? get error => _error;
 
+  AuthService() {
+    // Keep local state in sync with Firebase auth state.
+    _auth.authStateChanges().listen((fb.User? user) {
+      _currentUser = _mapFirebaseUser(user);
+      notifyListeners();
+    });
+  }
+
+  User? _mapFirebaseUser(fb.User? user) {
+    if (user == null) return null;
+    return User(
+      id: user.uid,
+      email: user.email ?? '',
+      name: user.displayName ?? '',
+      createdAt: user.metadata.creationTime ?? DateTime.now(),
+    );
+  }
+
   Future<void> checkAuthStatus() async {
-    try {
-      final token = await ApiClient.getToken();
-      if (token != null) {
-        await getProfile();
-      }
-    } catch (e) {
-      // Handle network/API errors gracefully
-      print('Auth check failed: $e');
-      _currentUser = null;
-      await ApiClient.clearToken();
-    }
+    _currentUser = _mapFirebaseUser(_auth.currentUser);
+    notifyListeners();
   }
 
   Future<bool> register(String email, String password, String name) async {
@@ -33,24 +44,18 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await ApiClient.post(
-        '/auth/register',
-        body: {
-          'email': email,
-          'password': password,
-          'name': name,
-        },
-        auth: false,
+      final cred = await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
       );
-
-      final authResponse = AuthResponse.fromJson(response['data']);
-      await ApiClient.setToken(authResponse.token);
-      _currentUser = authResponse.user;
+      await cred.user?.updateDisplayName(name);
+      await cred.user?.reload();
+      _currentUser = _mapFirebaseUser(_auth.currentUser);
       _isLoading = false;
       notifyListeners();
       return true;
-    } on ApiException catch (e) {
-      _error = e.message;
+    } on fb.FirebaseAuthException catch (e) {
+      _error = 'FirebaseAuth (${e.code}): ${e.message ?? 'Registration failed. Please try again.'}';
       _isLoading = false;
       notifyListeners();
       return false;
@@ -68,23 +73,13 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await ApiClient.post(
-        '/auth/login',
-        body: {
-          'email': email,
-          'password': password,
-        },
-        auth: false,
-      );
-
-      final authResponse = AuthResponse.fromJson(response['data']);
-      await ApiClient.setToken(authResponse.token);
-      _currentUser = authResponse.user;
+      await _auth.signInWithEmailAndPassword(email: email, password: password);
+      _currentUser = _mapFirebaseUser(_auth.currentUser);
       _isLoading = false;
       notifyListeners();
       return true;
-    } on ApiException catch (e) {
-      _error = e.message;
+    } on fb.FirebaseAuthException catch (e) {
+      _error = 'FirebaseAuth (${e.code}): ${e.message ?? 'Login failed. Please try again.'}';
       _isLoading = false;
       notifyListeners();
       return false;
@@ -96,18 +91,8 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  Future<void> getProfile() async {
-    try {
-      final response = await ApiClient.get('/auth/profile');
-      _currentUser = User.fromJson(response['data']);
-      notifyListeners();
-    } catch (e) {
-      await logout();
-    }
-  }
-
   Future<void> logout() async {
-    await ApiClient.clearToken();
+    await _auth.signOut();
     _currentUser = null;
     notifyListeners();
   }

@@ -51,6 +51,10 @@
 	<string>Rummage uses your location to notify you of nearby garage sales.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Rummage uses your location to find and notify you of nearby garage sales.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Rummage needs access to your camera to take photos of items for your garage sale listings.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Rummage needs access to your photo library to select photos of items for your garage sale listings.</string>
 	<key>UISceneDelegate</key>
 	<false/>
 	<key>UIApplicationSceneManifest</key>

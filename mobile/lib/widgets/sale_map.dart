@@ -58,9 +58,49 @@ class SaleMap extends StatefulWidget {
 class _SaleMapState extends State<SaleMap> {
   GoogleMapController? _mapController;
   bool _isInitialLoad = true;
+  CameraPosition? _initialCameraPosition;
+  bool _isUserInteracting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Store initial camera position only once
+    if (widget.userLatitude != 0 && widget.userLongitude != 0) {
+      _initialCameraPosition = CameraPosition(
+        target: LatLng(widget.userLatitude, widget.userLongitude),
+        zoom: 14.0,
+      );
+    }
+  }
+
+  @override
+  void didUpdateWidget(SaleMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Only update initial position if it was zero before and now has a value
+    // This prevents recentering when location updates occur
+    if (_initialCameraPosition == null && 
+        widget.userLatitude != 0 && 
+        widget.userLongitude != 0) {
+      _initialCameraPosition = CameraPosition(
+        target: LatLng(widget.userLatitude, widget.userLongitude),
+        zoom: 14.0,
+      );
+    }
+    // Don't reset initial load flag when widget updates (e.g., when sales change)
+    // This prevents triggering bounds changes when only sales data updates
+  }
 
   Future<void> _onCameraIdle() async {
     if (_mapController == null) return;
+    
+    // Only trigger bounds change if user was interacting (panning/zooming)
+    // This prevents triggering on initial load or when sales update
+    if (!_isUserInteracting && !_isInitialLoad) {
+      return;
+    }
+    
+    // Reset interaction flag when camera stops moving
+    _isUserInteracting = false;
     
     final bounds = await _mapController!.getVisibleRegion();
     final mapBounds = MapBounds(
@@ -70,6 +110,11 @@ class _SaleMapState extends State<SaleMap> {
       maxLng: bounds.northeast.longitude,
     );
     widget.onBoundsChanged?.call(mapBounds);
+  }
+
+  void _onCameraMoveStarted() {
+    // Mark that user is interacting with the map
+    _isUserInteracting = true;
   }
   
   Set<Marker> _buildMarkers() {
@@ -109,11 +154,14 @@ class _SaleMapState extends State<SaleMap> {
 
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     
+    // Use default position if initial position not set yet
+    final cameraPosition = _initialCameraPosition ?? CameraPosition(
+      target: const LatLng(0, 0),
+      zoom: 14.0,
+    );
+    
     return GoogleMap(
-      initialCameraPosition: CameraPosition(
-        target: LatLng(widget.userLatitude, widget.userLongitude),
-        zoom: 14.0,
-      ),
+      initialCameraPosition: cameraPosition,
       markers: _buildMarkers(),
       myLocationEnabled: true,
       myLocationButtonEnabled: true,
@@ -121,17 +169,18 @@ class _SaleMapState extends State<SaleMap> {
       zoomControlsEnabled: true,
       compassEnabled: true,
       onMapCreated: (controller) async {
-        _mapController = controller;
-        if (isDarkMode) {
-          controller.setMapStyle(MapStyles.darkMapStyle);
-        }
-        // Trigger initial bounds load after a short delay to let map settle
-        await Future.delayed(const Duration(milliseconds: 500));
-        if (_isInitialLoad) {
+        // Only set controller if it hasn't been set yet (prevents reset on rebuild)
+        if (_mapController == null) {
+          _mapController = controller;
+          if (isDarkMode) {
+            controller.setMapStyle(MapStyles.darkMapStyle);
+          }
+          // Mark initial load as complete - don't trigger bounds change on initial load
+          // The home screen will load nearby sales based on user location instead
           _isInitialLoad = false;
-          _onCameraIdle();
         }
       },
+      onCameraMoveStarted: _onCameraMoveStarted,
       onCameraIdle: _onCameraIdle,
       style: isDarkMode ? MapStyles.darkMapStyle : null,
     );

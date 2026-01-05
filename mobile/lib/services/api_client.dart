@@ -1,14 +1,13 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
-import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ApiClient {
-  static const String baseUrl = 'https://rummage-backend-287868745320.us-central1.run.app/api';
-  static const _storage = FlutterSecureStorage();
-  static const _tokenKey = 'auth_token';
+  // Live (Cloud Run) backend
+  static const String baseUrl =
+      'https://rummage-backend-287868745320.us-central1.run.app/api';
 
   /// Enable/disable verbose logging
   static const bool _enableLogging = true;
@@ -28,16 +27,26 @@ class ApiClient {
     }
   }
 
-  static Future<String?> getToken() async {
-    return await _storage.read(key: _tokenKey);
-  }
-
-  static Future<void> setToken(String token) async {
-    await _storage.write(key: _tokenKey, value: token);
-  }
-
-  static Future<void> clearToken() async {
-    await _storage.delete(key: _tokenKey);
+  static Future<String?> _getFirebaseIdToken() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
+    try {
+      // Force refresh to avoid edge cases where a cached token is expired/revoked.
+      return await user.getIdToken(true);
+    } on FirebaseAuthException catch (e) {
+      _log('Failed to get Firebase ID token (${e.code})', error: e);
+      // If the local credential/session is no longer valid, force a clean re-login.
+      if (e.code == 'user-token-expired' ||
+          e.code == 'invalid-user-token' ||
+          e.code == 'user-disabled' ||
+          e.code == 'requires-recent-login') {
+        await FirebaseAuth.instance.signOut();
+      }
+      return null;
+    } catch (e) {
+      _log('Failed to get Firebase ID token', error: e);
+      return null;
+    }
   }
 
   static Future<Map<String, String>> _getHeaders({bool auth = true}) async {
@@ -46,10 +55,11 @@ class ApiClient {
     };
 
     if (auth) {
-      final token = await getToken();
-      if (token != null) {
-        headers['Authorization'] = 'Bearer $token';
+      final token = await _getFirebaseIdToken();
+      if (token == null) {
+        throw ApiException(statusCode: 401, message: 'Not authenticated');
       }
+      headers['Authorization'] = 'Bearer $token';
     }
 
     return headers;

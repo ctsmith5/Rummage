@@ -55,10 +55,52 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  MapBounds? _lastBounds;
+  bool _isInitialBoundsLoad = true;
+  
   void _onMapBoundsChanged(MapBounds bounds) {
+    // Skip initial bounds load - we already loaded nearby sales in _loadData
+    if (_isInitialBoundsLoad) {
+      _isInitialBoundsLoad = false;
+      _lastBounds = bounds;
+      return;
+    }
+    
+    // Skip if bounds haven't changed significantly (avoid unnecessary API calls)
+    if (_lastBounds != null) {
+      // Calculate center of bounds
+      final oldCenterLat = (_lastBounds!.minLat + _lastBounds!.maxLat) / 2;
+      final oldCenterLng = (_lastBounds!.minLng + _lastBounds!.maxLng) / 2;
+      final newCenterLat = (bounds.minLat + bounds.maxLat) / 2;
+      final newCenterLng = (bounds.minLng + bounds.maxLng) / 2;
+      
+      // Calculate span (size) of bounds
+      final oldLatSpan = _lastBounds!.maxLat - _lastBounds!.minLat;
+      final oldLngSpan = _lastBounds!.maxLng - _lastBounds!.minLng;
+      final newLatSpan = bounds.maxLat - bounds.minLat;
+      final newLngSpan = bounds.maxLng - bounds.minLng;
+      
+      // Check if center moved significantly (more than 5% of span) or zoom changed (more than 10% span change)
+      final centerLatDiff = (newCenterLat - oldCenterLat).abs();
+      final centerLngDiff = (newCenterLng - oldCenterLng).abs();
+      final latSpanDiff = (newLatSpan - oldLatSpan).abs() / oldLatSpan;
+      final lngSpanDiff = (newLngSpan - oldLngSpan).abs() / oldLngSpan;
+      
+      // Only update if bounds changed significantly
+      if (centerLatDiff < oldLatSpan * 0.05 && 
+          centerLngDiff < oldLngSpan * 0.05 && 
+          latSpanDiff < 0.1 && 
+          lngSpanDiff < 0.1) {
+        return;
+      }
+    }
+    
+    _lastBounds = bounds;
+    
     // Debounce the bounds change to avoid too many API calls while panning
     _boundsDebounce?.cancel();
-    _boundsDebounce = Timer(const Duration(milliseconds: 500), () {
+    _boundsDebounce = Timer(const Duration(milliseconds: 800), () {
+      if (!mounted) return;
       final salesService = context.read<SalesService>();
       salesService.loadSalesByBounds(
         minLat: bounds.minLat,
@@ -225,13 +267,21 @@ class _HomeScreenState extends State<HomeScreen> {
         Expanded(
           child: Consumer2<SalesService, LocationService>(
             builder: (context, salesService, locationService, _) {
-              if (salesService.isLoading || locationService.isLoading) {
+              // Only block the UI while we don't yet have a location to center the map.
+              // IMPORTANT: Do NOT replace the map with a spinner during bounds fetches,
+              // or the GoogleMap widget will be unmounted/remounted, resetting camera state.
+              if (locationService.isLoading && !locationService.hasLocation) {
                 return const Center(child: CircularProgressIndicator());
+              }
+
+              if (!locationService.hasLocation) {
+                return const Center(child: Text('Enable location to view nearby sales.'));
               }
 
               return Stack(
                 children: [
                   SaleMap(
+                    key: const ValueKey('sale_map'),
                     sales: salesService.sales,
                     userLatitude: locationService.latitude,
                     userLongitude: locationService.longitude,
@@ -239,7 +289,36 @@ class _HomeScreenState extends State<HomeScreen> {
                     selectedSale: _selectedSale,
                     onBoundsChanged: _onMapBoundsChanged,
                   ),
-                  
+
+                  // Lightweight loading indicator while fetching sales (keep map mounted)
+                  if (salesService.isLoading)
+                    Positioned(
+                      top: 12,
+                      left: 12,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              'Loading…',
+                              style: TextStyle(color: Colors.white, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
                   // Selected sale card at bottom
                   if (_selectedSale != null)
                     Positioned(
