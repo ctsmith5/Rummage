@@ -11,10 +11,10 @@ import (
 )
 
 type FavoriteHandler struct {
-	favoriteService *services.FavoriteService
+	favoriteService services.FavoriteService
 }
 
-func NewFavoriteHandler(favoriteService *services.FavoriteService) *FavoriteHandler {
+func NewFavoriteHandler(favoriteService services.FavoriteService) *FavoriteHandler {
 	return &FavoriteHandler{
 		favoriteService: favoriteService,
 	}
@@ -80,3 +80,18 @@ func (h *FavoriteHandler) ListFavorites(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, models.NewSuccessResponse(favorites))
 }
 
+func (h *FavoriteHandler) ListFavoriteSales(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	if userID == "" {
+		writeJSON(w, http.StatusUnauthorized, models.NewErrorResponse("Unauthorized"))
+		return
+	}
+
+	sales, err := h.favoriteService.ListUserFavoriteSales(userID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.NewErrorResponse("Failed to list favorites"))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, models.NewSuccessResponse(sales))
+}

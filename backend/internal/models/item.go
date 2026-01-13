@@ -10,17 +10,17 @@ type Item struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Price       float64   `json:"price"`
-	ImageURL    string    `json:"image_url"`
+	ImageURLs   []string  `json:"image_urls,omitempty"`
 	Category    string    `json:"category"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
 type CreateItemRequest struct {
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	Price       float64 `json:"price"`
-	ImageURL    string  `json:"image_url"`
-	Category    string  `json:"category"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Price       float64  `json:"price"`
+	ImageURLs   []string `json:"image_urls"`
+	Category    string   `json:"category"`
 }
 
 func (r *CreateItemRequest) Validate() map[string]string {
@@ -33,6 +33,25 @@ func (r *CreateItemRequest) Validate() map[string]string {
 		errors["price"] = "Price cannot be negative"
 	}
 
+	return errors
+}
+
+type UpdateItemRequest struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Price       float64  `json:"price"`
+	ImageURLs   []string `json:"image_urls"`
+	Category    string   `json:"category"`
+}
+
+func (r *UpdateItemRequest) Validate() map[string]string {
+	errors := make(map[string]string)
+	if r.Name == "" {
+		errors["name"] = "Item name is required"
+	}
+	if r.Price < 0 {
+		errors["price"] = "Price cannot be negative"
+	}
 	return errors
 }
 
@@ -50,4 +69,3 @@ var ItemCategories = []string{
 	"Antiques",
 	"Other",
 }
-

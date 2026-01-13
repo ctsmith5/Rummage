@@ -146,7 +146,8 @@ class _CreateSaleScreenState extends State<CreateSaleScreen> {
           backgroundColor: AppColors.success,
         ),
       );
-      Navigator.of(context).pop();
+      // Return the created sale so the caller can update selection/UI immediately.
+      Navigator.of(context).pop(sale);
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -159,7 +160,6 @@ class _CreateSaleScreenState extends State<CreateSaleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final dateFormat = DateFormat('EEEE, MMM d, yyyy');
 
     return Scaffold(

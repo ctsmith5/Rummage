@@ -34,6 +34,33 @@ class _AddItemScreenState extends State<AddItemScreen> {
 
   final ImagePicker _imagePicker = ImagePicker();
 
+  OutlineInputBorder _outlineBorder(Color color) {
+    return OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: color, width: 2),
+    );
+  }
+
+  InputDecoration _fieldDecoration({
+    required bool isDarkMode,
+    required String labelText,
+    String? hintText,
+    String? prefixText,
+  }) {
+    final base = isDarkMode ? Colors.white24 : Colors.black26;
+    final disabled = isDarkMode ? Colors.white12 : Colors.black12;
+
+    return InputDecoration(
+      labelText: labelText,
+      hintText: hintText,
+      prefixText: prefixText,
+      border: _outlineBorder(base),
+      enabledBorder: _outlineBorder(base),
+      disabledBorder: _outlineBorder(disabled),
+      focusedBorder: _outlineBorder(AppColors.primary),
+    );
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -115,6 +142,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
+    // Capture dependencies before any await gaps to avoid using BuildContext across async gaps.
+    final salesService = context.read<SalesService>();
+
     setState(() {
       _isLoading = true;
       _uploadProgress = 0;
@@ -161,11 +191,11 @@ class _AddItemScreenState extends State<AddItemScreen> {
       name: _nameController.text.trim(),
       description: _descriptionController.text.trim(),
       price: double.tryParse(_priceController.text) ?? 0,
-      imageUrl: imageUrl,
+      imageUrls: imageUrl.isNotEmpty ? [imageUrl] : [],
       category: _selectedCategory,
     );
 
-    final item = await context.read<SalesService>().addItem(
+    final item = await salesService.addItem(
       widget.saleId,
       request,
     );
@@ -181,7 +211,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
           backgroundColor: AppColors.success,
         ),
       );
-      Navigator.of(context).pop();
+      // Return `true` so the Sale Details screen can refresh immediately.
+      Navigator.of(context).pop(true);
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -259,7 +290,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
             // Name
             TextFormField(
               controller: _nameController,
-              decoration: const InputDecoration(
+              decoration: _fieldDecoration(
+                isDarkMode: isDarkMode,
                 labelText: 'Item Name',
                 hintText: 'e.g., Vintage Chair, Table Lamp',
               ),
@@ -277,7 +309,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
             // Description
             TextFormField(
               controller: _descriptionController,
-              decoration: const InputDecoration(
+              decoration: _fieldDecoration(
+                isDarkMode: isDarkMode,
                 labelText: 'Description',
                 hintText: 'Describe the item condition, size, etc.',
               ),
@@ -290,7 +323,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
             // Price
             TextFormField(
               controller: _priceController,
-              decoration: const InputDecoration(
+              decoration: _fieldDecoration(
+                isDarkMode: isDarkMode,
                 labelText: 'Price',
                 prefixText: '\$ ',
                 hintText: '0.00',
@@ -312,8 +346,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
 
             // Category
             DropdownButtonFormField<String>(
-              value: _selectedCategory,
-              decoration: const InputDecoration(
+              initialValue: _selectedCategory,
+              decoration: _fieldDecoration(
+                isDarkMode: isDarkMode,
                 labelText: 'Category',
               ),
               items: ItemCategory.categories.map((category) {

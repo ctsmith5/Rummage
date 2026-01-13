@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -31,9 +32,21 @@ func main() {
 		log.Printf("Warning: failed to initialize Firebase Auth client: %v", err)
 	}
 
-	// Initialize services with persistent storage
-	salesService := services.NewSalesService(cfg.DataDir)
-	favoriteService := services.NewFavoriteService(cfg.DataDir)
+	// Mongo is required. Fail fast if not configured or not reachable.
+	if cfg.MongoURI == "" {
+		log.Fatalf("MONGO_URI is required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	salesService, err := services.NewMongoSalesService(ctx, cfg.MongoURI, cfg.MongoDB)
+	if err != nil {
+		// Common cause: Atlas Network Access doesn't allow Cloud Run egress.
+		log.Fatalf("Failed to initialize MongoDB sales service: %v", err)
+	}
+	favoriteService, err := services.NewMongoFavoriteService(ctx, cfg.MongoURI, cfg.MongoDB, salesService)
+	if err != nil {
+		log.Fatalf("Failed to initialize MongoDB favorites service: %v", err)
+	}
 	imageService := services.NewImageService(cfg.UploadDir)
 
 	// Initialize handlers
@@ -72,18 +85,21 @@ func main() {
 			// Sales routes
 			r.Route("/sales", func(r chi.Router) {
 				r.Get("/", salesHandler.ListSales)
+				r.Get("/search", salesHandler.SearchSales)
 				r.Get("/bounds", salesHandler.ListSalesByBounds)
 				r.Post("/", salesHandler.CreateSale)
 
 				r.Route("/{saleId}", func(r chi.Router) {
 					r.Get("/", salesHandler.GetSale)
 					r.Put("/", salesHandler.UpdateSale)
+					r.Put("/cover", salesHandler.SetSaleCoverPhoto)
 					r.Delete("/", salesHandler.DeleteSale)
 					r.Post("/start", salesHandler.StartSale)
 					r.Post("/end", salesHandler.EndSale)
 
 					// Items
 					r.Post("/items", salesHandler.AddItem)
+					r.Put("/items/{itemId}", salesHandler.UpdateItem)
 					r.Delete("/items/{itemId}", salesHandler.DeleteItem)
 
 					// Favorites
@@ -94,6 +110,7 @@ func main() {
 
 			// Favorites list
 			r.Get("/favorites", favoriteHandler.ListFavorites)
+			r.Get("/favorites/sales", favoriteHandler.ListFavoriteSales)
 
 			// Image upload
 			r.Post("/upload", imageHandler.Upload)
@@ -111,4 +128,3 @@ func main() {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }
-

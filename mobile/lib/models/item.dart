@@ -4,7 +4,7 @@ class Item {
   final String name;
   final String description;
   final double price;
-  final String imageUrl;
+  final List<String> imageUrls;
   final String category;
   final DateTime createdAt;
 
@@ -14,7 +14,7 @@ class Item {
     required this.name,
     required this.description,
     required this.price,
-    required this.imageUrl,
+    required this.imageUrls,
     required this.category,
     required this.createdAt,
   });
@@ -26,7 +26,10 @@ class Item {
       name: json['name'] as String,
       description: json['description'] as String? ?? '',
       price: (json['price'] as num).toDouble(),
-      imageUrl: json['image_url'] as String? ?? '',
+      imageUrls: (json['image_urls'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
       category: json['category'] as String? ?? 'Other',
       createdAt: DateTime.parse(json['created_at'] as String),
     );
@@ -39,7 +42,7 @@ class Item {
       'name': name,
       'description': description,
       'price': price,
-      'image_url': imageUrl,
+      'image_urls': imageUrls,
       'category': category,
       'created_at': createdAt.toIso8601String(),
     };
@@ -51,7 +54,7 @@ class Item {
     String? name,
     String? description,
     double? price,
-    String? imageUrl,
+    List<String>? imageUrls,
     String? category,
     DateTime? createdAt,
   }) {
@@ -61,27 +64,28 @@ class Item {
       name: name ?? this.name,
       description: description ?? this.description,
       price: price ?? this.price,
-      imageUrl: imageUrl ?? this.imageUrl,
+      imageUrls: imageUrls ?? this.imageUrls,
       category: category ?? this.category,
       createdAt: createdAt ?? this.createdAt,
     );
   }
 
   String get formattedPrice => '\$${price.toStringAsFixed(2)}';
+  String get primaryImageUrl => imageUrls.isNotEmpty ? imageUrls.first : '';
 }
 
 class CreateItemRequest {
   final String name;
   final String description;
   final double price;
-  final String imageUrl;
+  final List<String> imageUrls;
   final String category;
 
   CreateItemRequest({
     required this.name,
     required this.description,
     required this.price,
-    required this.imageUrl,
+    required this.imageUrls,
     required this.category,
   });
 
@@ -90,7 +94,7 @@ class CreateItemRequest {
       'name': name,
       'description': description,
       'price': price,
-      'image_url': imageUrl,
+      'image_urls': imageUrls,
       'category': category,
     };
   }

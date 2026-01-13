@@ -24,8 +24,6 @@ class SaleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final dateFormat = DateFormat('MMM d');
-    final timeFormat = DateFormat('h a');
 
     return Card(
       elevation: 4,
@@ -45,9 +43,9 @@ class SaleCard extends StatelessWidget {
                   color: isDarkMode
                       ? AppColors.darkSurface
                       : AppColors.lightSurface,
-                  child: sale.items.isNotEmpty && sale.items.first.imageUrl.isNotEmpty
+                  child: sale.saleCoverPhoto.isNotEmpty
                       ? CachedNetworkImage(
-                          imageUrl: sale.items.first.imageUrl,
+                          imageUrl: sale.saleCoverPhoto,
                           fit: BoxFit.cover,
                           placeholder: (context, url) => const Center(
                             child: CircularProgressIndicator(strokeWidth: 2),
@@ -83,7 +81,7 @@ class SaleCard extends StatelessWidget {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: AppColors.success.withOpacity(0.2),
+                              color: AppColors.success.withAlpha((0.2 * 255).round()),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Text(
@@ -100,7 +98,7 @@ class SaleCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       _formatDateRange(),
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: AppColors.primary,
                         fontSize: 14,
                       ),
@@ -179,4 +177,3 @@ class SaleCard extends StatelessWidget {
     }
   }
 }
-

@@ -7,6 +7,13 @@ import '../models/garage_sale.dart';
 import '../theme/app_colors.dart';
 import '../theme/map_styles.dart';
 
+class FitBoundsRequest {
+  final LatLngBounds bounds;
+  final int seq;
+
+  const FitBoundsRequest({required this.bounds, required this.seq});
+}
+
 /// Check if Google Maps is supported on this platform
 bool get isGoogleMapsSupported {
   if (kIsWeb) return true;
@@ -40,6 +47,8 @@ class SaleMap extends StatefulWidget {
   final Function(GarageSale)? onSaleSelected;
   final GarageSale? selectedSale;
   final Function(MapBounds)? onBoundsChanged;
+  final FitBoundsRequest? fitBoundsRequest;
+  final void Function(LatLng position)? onMapTap;
 
   const SaleMap({
     super.key,
@@ -49,6 +58,8 @@ class SaleMap extends StatefulWidget {
     this.onSaleSelected,
     this.selectedSale,
     this.onBoundsChanged,
+    this.fitBoundsRequest,
+    this.onMapTap,
   });
 
   @override
@@ -60,6 +71,8 @@ class _SaleMapState extends State<SaleMap> {
   bool _isInitialLoad = true;
   CameraPosition? _initialCameraPosition;
   bool _isUserInteracting = false;
+  int _lastFitSeq = 0;
+  FitBoundsRequest? _pendingFit;
 
   @override
   void initState() {
@@ -88,6 +101,46 @@ class _SaleMapState extends State<SaleMap> {
     }
     // Don't reset initial load flag when widget updates (e.g., when sales change)
     // This prevents triggering bounds changes when only sales data updates
+
+    // Handle fit-to-bounds requests coming from the parent (e.g., search).
+    final req = widget.fitBoundsRequest;
+    if (req != null && req.seq != _lastFitSeq) {
+      _lastFitSeq = req.seq;
+      _fitToBounds(req);
+    }
+  }
+
+  Future<void> _fitToBounds(FitBoundsRequest req) async {
+    if (!isGoogleMapsSupported) return;
+    if (_mapController == null) {
+      _pendingFit = req;
+      return;
+    }
+
+    final sw = req.bounds.southwest;
+    final ne = req.bounds.northeast;
+    final samePoint = (sw.latitude == ne.latitude) && (sw.longitude == ne.longitude);
+
+    try {
+      if (samePoint) {
+        await _mapController!.animateCamera(CameraUpdate.newLatLngZoom(sw, 14));
+      } else {
+        await _mapController!.animateCamera(CameraUpdate.newLatLngBounds(req.bounds, 48));
+      }
+    } catch (_) {
+      // If bounds animation fails due to map not yet laid out, retry shortly.
+      await Future.delayed(const Duration(milliseconds: 250));
+      if (_mapController == null) return;
+      try {
+        if (samePoint) {
+          await _mapController!.animateCamera(CameraUpdate.newLatLngZoom(sw, 14));
+        } else {
+          await _mapController!.animateCamera(CameraUpdate.newLatLngBounds(req.bounds, 48));
+        }
+      } catch (_) {
+        // Give up silently; map will still show markers.
+      }
+    }
   }
 
   Future<void> _onCameraIdle() async {
@@ -134,7 +187,7 @@ class _SaleMapState extends State<SaleMap> {
           onTap: () => widget.onSaleSelected?.call(sale),
         ),
         onTap: () => widget.onSaleSelected?.call(sale),
-        zIndex: isSelected ? 1.0 : 0.0,
+        zIndexInt: isSelected ? 1 : 0,
       );
     }).toSet();
   }
@@ -155,34 +208,49 @@ class _SaleMapState extends State<SaleMap> {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     
     // Use default position if initial position not set yet
-    final cameraPosition = _initialCameraPosition ?? CameraPosition(
-      target: const LatLng(0, 0),
-      zoom: 14.0,
-    );
+    final cameraPosition = _initialCameraPosition ??
+        const CameraPosition(
+          target: LatLng(0, 0),
+          zoom: 14.0,
+        );
     
-    return GoogleMap(
-      initialCameraPosition: cameraPosition,
-      markers: _buildMarkers(),
-      myLocationEnabled: true,
-      myLocationButtonEnabled: true,
-      mapToolbarEnabled: false,
-      zoomControlsEnabled: true,
-      compassEnabled: true,
-      onMapCreated: (controller) async {
-        // Only set controller if it hasn't been set yet (prevents reset on rebuild)
-        if (_mapController == null) {
-          _mapController = controller;
-          if (isDarkMode) {
-            controller.setMapStyle(MapStyles.darkMapStyle);
-          }
-          // Mark initial load as complete - don't trigger bounds change on initial load
-          // The home screen will load nearby sales based on user location instead
-          _isInitialLoad = false;
-        }
-      },
-      onCameraMoveStarted: _onCameraMoveStarted,
-      onCameraIdle: _onCameraIdle,
-      style: isDarkMode ? MapStyles.darkMapStyle : null,
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Background color behind the platform view; masks white flashes during keyboard animations.
+        Container(
+          color: isDarkMode ? AppColors.darkSurface : AppColors.lightSurface,
+        ),
+        GoogleMap(
+          initialCameraPosition: cameraPosition,
+          markers: _buildMarkers(),
+          myLocationEnabled: true,
+          myLocationButtonEnabled: true,
+          mapToolbarEnabled: false,
+          zoomControlsEnabled: true,
+          compassEnabled: true,
+          onTap: (pos) => widget.onMapTap?.call(pos),
+          onMapCreated: (controller) async {
+            // Only set controller if it hasn't been set yet (prevents reset on rebuild)
+            if (_mapController == null) {
+              _mapController = controller;
+              // Mark initial load as complete - don't trigger bounds change on initial load
+              // The home screen will load nearby sales based on user location instead
+              _isInitialLoad = false;
+
+              // If there was a fit request before the controller existed, apply it now.
+              final pending = _pendingFit;
+              if (pending != null) {
+                _pendingFit = null;
+                await _fitToBounds(pending);
+              }
+            }
+          },
+          onCameraMoveStarted: _onCameraMoveStarted,
+          onCameraIdle: _onCameraIdle,
+          style: isDarkMode ? MapStyles.darkMapStyle : null,
+        ),
+      ],
     );
   }
 
@@ -303,12 +371,12 @@ class SaleMapPlaceholder extends StatelessWidget {
             final isSelected = sale.id == selectedSaleId;
             
             // Distribute pins in a grid pattern across the map
-            final columns = 3;
+            const columns = 3;
             final row = index ~/ columns;
             final col = index % columns;
             
             final xSpacing = (size.width - 100) / columns;
-            final ySpacing = 100.0;
+            const ySpacing = 100.0;
             
             return Positioned(
               left: 50.0 + col * xSpacing,
@@ -323,7 +391,7 @@ class SaleMapPlaceholder extends StatelessWidget {
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: AppColors.primary.withOpacity(0.5),
+                                  color: AppColors.primary.withAlpha((0.5 * 255).round()),
                                   blurRadius: 10,
                                   spreadRadius: 2,
                                 ),
@@ -433,7 +501,7 @@ class SaleMapPlaceholder extends StatelessWidget {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.location_pin, color: AppColors.primary, size: 16),
+                      const Icon(Icons.location_pin, color: AppColors.primary, size: 16),
                       const SizedBox(width: 4),
                       Text(
                         'Active Sale',
@@ -448,7 +516,7 @@ class SaleMapPlaceholder extends StatelessWidget {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.location_pin, color: AppColors.mapPinInactive, size: 16),
+                      const Icon(Icons.location_pin, color: AppColors.mapPinInactive, size: 16),
                       const SizedBox(width: 4),
                       Text(
                         'Inactive',
@@ -495,8 +563,8 @@ class _GridPainter extends CustomPainter {
     // Draw some "parks" (green rectangles)
     final parkPaint = Paint()
       ..color = isDarkMode
-          ? Colors.green.shade900.withOpacity(0.3)
-          : Colors.green.shade200.withOpacity(0.5);
+          ? Colors.green.shade900.withAlpha((0.3 * 255).round())
+          : Colors.green.shade200.withAlpha((0.5 * 255).round());
     
     canvas.drawRect(
       Rect.fromLTWH(size.width * 0.7, size.height * 0.2, size.width * 0.25, size.height * 0.3),

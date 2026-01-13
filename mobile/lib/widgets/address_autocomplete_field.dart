@@ -130,47 +130,47 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
 
       debugPrint('📐 Overlay width: $width, predictions: ${_predictions.length}');
 
-      _overlayEntry = OverlayEntry(
+    _overlayEntry = OverlayEntry(
         builder: (overlayContext) => Positioned(
           width: width,
-          child: CompositedTransformFollower(
-            link: _layerLink,
-            showWhenUnlinked: false,
-            offset: const Offset(0, 60),
-            child: Material(
-              elevation: 8,
-              borderRadius: BorderRadius.circular(12),
+        child: CompositedTransformFollower(
+          link: _layerLink,
+          showWhenUnlinked: false,
+          offset: const Offset(0, 60),
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(12),
               color: Colors.transparent,
-              child: Container(
-                constraints: const BoxConstraints(maxHeight: 250),
-                decoration: BoxDecoration(
+            child: Container(
+              constraints: const BoxConstraints(maxHeight: 250),
+              decoration: BoxDecoration(
                   color: Theme.of(overlayContext).cardColor,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: AppColors.primary.withOpacity(0.2),
-                  ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppColors.primary.withAlpha((0.2 * 255).round()),
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    padding: EdgeInsets.zero,
-                    itemCount: _predictions.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final prediction = _predictions[index];
-                      return _PredictionTile(
-                        prediction: prediction,
-                        onTap: () => _onPredictionSelected(prediction),
-                      );
-                    },
-                  ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  itemCount: _predictions.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final prediction = _predictions[index];
+                    return _PredictionTile(
+                      prediction: prediction,
+                      onTap: () => _onPredictionSelected(prediction),
+                    );
+                  },
                 ),
               ),
             ),
           ),
         ),
-      );
+      ),
+    );
 
       final overlay = Overlay.of(context);
       overlay.insert(_overlayEntry!);
@@ -270,7 +270,7 @@ class _PredictionTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            Icon(
+                const Icon(
               Icons.place,
               color: AppColors.primary,
               size: 20,

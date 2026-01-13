@@ -6,6 +6,7 @@ class GarageSale {
   final String title;
   final String description;
   final String address;
+  final String saleCoverPhoto;
   final double latitude;
   final double longitude;
   final DateTime startDate;
@@ -20,6 +21,7 @@ class GarageSale {
     required this.title,
     required this.description,
     required this.address,
+    required this.saleCoverPhoto,
     required this.latitude,
     required this.longitude,
     required this.startDate,
@@ -36,6 +38,7 @@ class GarageSale {
       title: json['title'] as String,
       description: json['description'] as String? ?? '',
       address: json['address'] as String,
+      saleCoverPhoto: json['sale_cover_photo'] as String? ?? '',
       latitude: (json['latitude'] as num).toDouble(),
       longitude: (json['longitude'] as num).toDouble(),
       startDate: DateTime.parse(json['start_date'] as String),
@@ -56,6 +59,7 @@ class GarageSale {
       'title': title,
       'description': description,
       'address': address,
+      'sale_cover_photo': saleCoverPhoto,
       'latitude': latitude,
       'longitude': longitude,
       'start_date': startDate.toIso8601String(),
@@ -72,6 +76,7 @@ class GarageSale {
     String? title,
     String? description,
     String? address,
+    String? saleCoverPhoto,
     double? latitude,
     double? longitude,
     DateTime? startDate,
@@ -86,6 +91,7 @@ class GarageSale {
       title: title ?? this.title,
       description: description ?? this.description,
       address: address ?? this.address,
+      saleCoverPhoto: saleCoverPhoto ?? this.saleCoverPhoto,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       startDate: startDate ?? this.startDate,

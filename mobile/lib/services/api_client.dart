@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
-import 'package:flutter/foundation.dart';
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
@@ -25,6 +25,14 @@ class ApiClient {
       // Also log to developer console for better IDE integration
       developer.log(message, name: 'ApiClient', error: error, stackTrace: stackTrace);
     }
+  }
+
+  static String _networkErrorMessage(Object e) {
+    // Preserve the underlying error so we can distinguish timeouts vs DNS vs TLS vs offline.
+    if (e is TimeoutException) {
+      return 'Network error: Request timed out';
+    }
+    return 'Network error: $e';
   }
 
   static Future<String?> _getFirebaseIdToken() async {
@@ -81,9 +89,10 @@ class ApiClient {
       return _handleResponse(response, 'GET', endpoint);
     } catch (e, stackTrace) {
       _log('GET $endpoint failed', error: e, stackTrace: stackTrace);
+      if (e is ApiException) rethrow;
       throw ApiException(
         statusCode: 0,
-        message: 'Network error: Unable to connect to server',
+        message: _networkErrorMessage(e),
       );
     }
   }
@@ -108,9 +117,10 @@ class ApiClient {
       return _handleResponse(response, 'POST', endpoint);
     } catch (e, stackTrace) {
       _log('POST $endpoint failed', error: e, stackTrace: stackTrace);
+      if (e is ApiException) rethrow;
       throw ApiException(
         statusCode: 0,
-        message: 'Network error: Unable to connect to server',
+        message: _networkErrorMessage(e),
       );
     }
   }
@@ -123,7 +133,7 @@ class ApiClient {
     final uri = Uri.parse('$baseUrl$endpoint');
     final headers = await _getHeaders(auth: auth);
 
-    _log('PUT $endpoint');
+    _log('PUT $uri');
     _log('Request body: ${body != null ? jsonEncode(body) : 'null'}');
 
     try {
@@ -131,11 +141,15 @@ class ApiClient {
         uri,
         headers: headers,
         body: body != null ? jsonEncode(body) : null,
-      );
+      ).timeout(const Duration(seconds: 10));
       return _handleResponse(response, 'PUT', endpoint);
     } catch (e, stackTrace) {
       _log('PUT $endpoint failed', error: e, stackTrace: stackTrace);
-      rethrow;
+      if (e is ApiException) rethrow;
+      throw ApiException(
+        statusCode: 0,
+        message: _networkErrorMessage(e),
+      );
     }
   }
 
@@ -146,14 +160,19 @@ class ApiClient {
     final uri = Uri.parse('$baseUrl$endpoint');
     final headers = await _getHeaders(auth: auth);
 
-    _log('DELETE $endpoint');
+    _log('DELETE $uri');
 
     try {
-      final response = await http.delete(uri, headers: headers);
+      final response = await http.delete(uri, headers: headers)
+          .timeout(const Duration(seconds: 10));
       return _handleResponse(response, 'DELETE', endpoint);
     } catch (e, stackTrace) {
       _log('DELETE $endpoint failed', error: e, stackTrace: stackTrace);
-      rethrow;
+      if (e is ApiException) rethrow;
+      throw ApiException(
+        statusCode: 0,
+        message: _networkErrorMessage(e),
+      );
     }
   }
 
@@ -163,12 +182,16 @@ class ApiClient {
 
     Map<String, dynamic> body;
     try {
+      if (response.body.trim().isEmpty) {
+        body = <String, dynamic>{};
+      } else {
       body = jsonDecode(response.body) as Map<String, dynamic>;
+      }
     } catch (e) {
       _log('Failed to parse response as JSON', error: e);
       throw ApiException(
         statusCode: response.statusCode,
-        message: 'Invalid response format: ${response.body}',
+        message: 'Invalid response format (HTTP ${response.statusCode}): ${response.body}',
       );
     }
 
@@ -176,6 +199,12 @@ class ApiClient {
       _log('$method $endpoint - Success');
       return body;
     } else {
+      if (body.isEmpty) {
+        throw ApiException(
+          statusCode: response.statusCode,
+          message: 'HTTP ${response.statusCode}',
+        );
+      }
       final errorMessage = body['error'] as String? ?? 'An error occurred';
       final validationErrors = body['errors'] as Map<String, dynamic>?;
       

@@ -11,8 +11,8 @@ import 'services/favorite_service.dart';
 import 'screens/splash_screen.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
+    WidgetsFlutterBinding.ensureInitialized();
+    
   // Add crash protection (still useful in profile on-device)
   FlutterError.onError = (FlutterErrorDetails details) {
     print('Flutter Error: ${details.exception}');

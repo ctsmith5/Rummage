@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -18,6 +20,7 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
+  Timer? _authDelayTimer;
 
   @override
   void initState() {
@@ -42,30 +45,33 @@ class _SplashScreenState extends State<SplashScreen>
     );
 
     _animationController.forward();
-    _checkAuth();
+    _scheduleAuthCheck();
   }
 
-  Future<void> _checkAuth() async {
-    await Future.delayed(const Duration(seconds: 2));
+  void _scheduleAuthCheck() {
+    // Use a cancelable Timer so widget tests (and disposes) don't leave pending timers.
+    _authDelayTimer?.cancel();
+    _authDelayTimer = Timer(const Duration(seconds: 2), () async {
+      if (!mounted) return;
 
-    if (!mounted) return;
+      final authService = context.read<AuthService>();
+      await authService.checkAuthStatus();
 
-    final authService = context.read<AuthService>();
-    await authService.checkAuthStatus();
+      if (!mounted) return;
 
-    if (!mounted) return;
-
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => authService.isLoggedIn
-            ? const HomeScreen()
-            : const LoginScreen(),
-      ),
-    );
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => authService.isLoggedIn
+              ? const HomeScreen()
+              : const LoginScreen(),
+        ),
+      );
+    });
   }
 
   @override
   void dispose() {
+    _authDelayTimer?.cancel();
     _animationController.dispose();
     super.dispose();
   }
@@ -102,7 +108,7 @@ class _SplashScreenState extends State<SplashScreen>
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
+                              color: Colors.black.withAlpha((0.2 * 255).round()),
                               blurRadius: 20,
                               offset: const Offset(0, 10),
                             ),
@@ -129,7 +135,7 @@ class _SplashScreenState extends State<SplashScreen>
                         'Find garage sales near you',
                         style: TextStyle(
                           fontSize: 16,
-                          color: Colors.white.withOpacity(0.8),
+                          color: Colors.white.withAlpha((0.8 * 255).round()),
                         ),
                       ),
                       const SizedBox(height: 48),

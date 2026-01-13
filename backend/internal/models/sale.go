@@ -5,18 +5,19 @@ import (
 )
 
 type GarageSale struct {
-	ID          string    `json:"id"`
-	UserID      string    `json:"user_id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	Address     string    `json:"address"`
-	Latitude    float64   `json:"latitude"`
-	Longitude   float64   `json:"longitude"`
-	StartDate   time.Time `json:"start_date"`
-	EndDate     time.Time `json:"end_date"`
-	IsActive    bool      `json:"is_active"`
-	Items       []Item    `json:"items,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID             string    `json:"id"`
+	UserID         string    `json:"user_id"`
+	Title          string    `json:"title"`
+	Description    string    `json:"description"`
+	Address        string    `json:"address"`
+	SaleCoverPhoto string    `json:"sale_cover_photo,omitempty"`
+	Latitude       float64   `json:"latitude"`
+	Longitude      float64   `json:"longitude"`
+	StartDate      time.Time `json:"start_date"`
+	EndDate        time.Time `json:"end_date"`
+	IsActive       bool      `json:"is_active"`
+	Items          []Item    `json:"items,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type CreateSaleRequest struct {
@@ -37,6 +38,12 @@ type UpdateSaleRequest struct {
 	Longitude   float64   `json:"longitude"`
 	StartDate   time.Time `json:"start_date"`
 	EndDate     time.Time `json:"end_date"`
+}
+
+// SetSaleCoverPhotoRequest updates the dedicated cover photo for a sale.
+// The cover photo is a URL (typically a Firebase Storage download URL).
+type SetSaleCoverPhotoRequest struct {
+	SaleCoverPhoto string `json:"sale_cover_photo"`
 }
 
 type ListSalesQuery struct {
@@ -69,4 +76,3 @@ func (r *CreateSaleRequest) Validate() map[string]string {
 
 	return errors
 }
-

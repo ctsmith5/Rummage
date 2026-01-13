@@ -10,6 +10,13 @@ class SalesService extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
 
+  // Persist pins between bounds loads so we don't "forget" previously seen sales
+  // when the user pans away and back.
+  static const int _maxCachedSales = 500;
+  final Map<String, GarageSale> _cacheById = {};
+  final Map<String, int> _lastSeenMsById = {};
+  _Bounds? _currentBounds;
+
   List<GarageSale> get sales => _sales;
   GarageSale? get selectedSale => _selectedSale;
   bool get isLoading => _isLoading;
@@ -52,7 +59,9 @@ class SalesService extends ChangeNotifier {
       );
 
       final data = response['data'] as List<dynamic>?;
-      _sales = data?.map((e) => GarageSale.fromJson(e)).toList() ?? [];
+      final loaded = data?.map((e) => GarageSale.fromJson(e)).toList() ?? [];
+      _upsertIntoCache(loaded);
+      _sales = loaded;
       _log('Loaded ${_sales.length} sales');
       _isLoading = false;
       notifyListeners();
@@ -64,6 +73,52 @@ class SalesService extends ChangeNotifier {
     }
   }
 
+  Future<List<GarageSale>> searchNearbySales({
+    required double lat,
+    required double lng,
+    double radius = 10,
+    required String query,
+  }) async {
+    final q = query.trim();
+    if (q.isEmpty) {
+      return [];
+    }
+
+    _isLoading = true;
+    _error = null;
+    // Clear any previously loaded (bounds/nearby) pins so only search results are visible.
+    _sales = [];
+    notifyListeners();
+
+    _log('Searching nearby sales: q="$q" lat=$lat, lng=$lng, radius=$radius');
+
+    try {
+      final response = await ApiClient.get(
+        '/sales/search',
+        queryParams: {
+          'lat': lat.toString(),
+          'lng': lng.toString(),
+          'radius': radius.toString(),
+          'q': q,
+        },
+      );
+
+      final data = response['data'] as List<dynamic>?;
+      final loaded = data?.map((e) => GarageSale.fromJson(e)).toList() ?? [];
+      _upsertIntoCache(loaded);
+      _sales = loaded;
+      _isLoading = false;
+      notifyListeners();
+      return loaded;
+    } catch (e, stackTrace) {
+      _log('Failed to search sales', error: e, stackTrace: stackTrace);
+      _error = _getErrorMessage(e);
+      _isLoading = false;
+      notifyListeners();
+      return [];
+    }
+  }
+
   Future<void> loadSalesByBounds({
     required double minLat,
     required double maxLat,
@@ -72,6 +127,9 @@ class SalesService extends ChangeNotifier {
   }) async {
     _isLoading = true;
     _error = null;
+    _currentBounds = _Bounds(minLat: minLat, maxLat: maxLat, minLng: minLng, maxLng: maxLng);
+    // Show cached pins immediately for the incoming bounds (prevents "blank" gap).
+    _sales = _filterCacheToBounds(_currentBounds!);
     notifyListeners();
 
     _log('Loading sales by bounds: minLat=$minLat, maxLat=$maxLat, minLng=$minLng, maxLng=$maxLng');
@@ -84,11 +142,14 @@ class SalesService extends ChangeNotifier {
           'maxLat': maxLat.toString(),
           'minLng': minLng.toString(),
           'maxLng': maxLng.toString(),
+          'limit': _maxCachedSales.toString(),
         },
       );
 
       final data = response['data'] as List<dynamic>?;
-      _sales = data?.map((e) => GarageSale.fromJson(e)).toList() ?? [];
+      final loaded = data?.map((e) => GarageSale.fromJson(e)).toList() ?? [];
+      _upsertIntoCache(loaded);
+      _sales = _currentBounds != null ? _filterCacheToBounds(_currentBounds!) : loaded;
       _log('Loaded ${_sales.length} sales within bounds');
       _isLoading = false;
       notifyListeners();
@@ -117,6 +178,44 @@ class SalesService extends ChangeNotifier {
     }
   }
 
+  Future<GarageSale?> setSaleCoverPhoto(String saleId, String coverUrl) async {
+    _log('Setting sale cover photo: saleId=$saleId');
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final response = await ApiClient.put(
+        '/sales/$saleId/cover',
+        body: {
+          'sale_cover_photo': coverUrl,
+        },
+      );
+
+      final updated = GarageSale.fromJson(response['data']);
+
+      // Update selected sale and caches/lists.
+      if (_selectedSale?.id == saleId) {
+        _selectedSale = updated;
+      }
+      _cacheById[saleId] = updated;
+      final listIdx = _sales.indexWhere((s) => s.id == saleId);
+      if (listIdx != -1) {
+        _sales[listIdx] = updated;
+      }
+
+      _isLoading = false;
+      notifyListeners();
+      return updated;
+    } catch (e, stackTrace) {
+      _log('Failed to set sale cover photo', error: e, stackTrace: stackTrace);
+      _error = _getErrorMessage(e);
+      _isLoading = false;
+      notifyListeners();
+      return null;
+    }
+  }
+
   Future<GarageSale?> createSale(CreateSaleRequest request) async {
     _isLoading = true;
     _error = null;
@@ -130,6 +229,7 @@ class SalesService extends ChangeNotifier {
       _log('Create sale response: $response');
       
       final sale = GarageSale.fromJson(response['data']);
+      _upsertIntoCache([sale]);
       _sales.add(sale);
       _log('Sale created successfully: ${sale.id}');
       _isLoading = false;
@@ -166,6 +266,8 @@ class SalesService extends ChangeNotifier {
     try {
       await ApiClient.delete('/sales/$saleId');
       _sales.removeWhere((s) => s.id == saleId);
+      _cacheById.remove(saleId);
+      _lastSeenMsById.remove(saleId);
       _log('Sale deleted successfully');
       notifyListeners();
       return true;
@@ -261,6 +363,59 @@ class SalesService extends ChangeNotifier {
     }
   }
 
+  Future<Item?> updateItem(String saleId, String itemId, CreateItemRequest request) async {
+    _log('Updating item $itemId for sale $saleId');
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final response = await ApiClient.put(
+        '/sales/$saleId/items/$itemId',
+        body: request.toJson(),
+      );
+      final updated = Item.fromJson(response['data']);
+
+      if (_selectedSale?.id == saleId) {
+        final updatedItems = _selectedSale!.items
+            .map((i) => i.id == itemId ? updated : i)
+            .toList();
+        _selectedSale = _selectedSale!.copyWith(items: updatedItems);
+      }
+
+      // Also update any cached/list sales that contain this item (best effort).
+      for (final entry in _cacheById.entries) {
+        final s = entry.value;
+        final idx = s.items.indexWhere((i) => i.id == itemId);
+        if (idx != -1) {
+          final newItems = [...s.items];
+          newItems[idx] = updated;
+          _cacheById[entry.key] = s.copyWith(items: newItems);
+        }
+      }
+      final listIdx = _sales.indexWhere((s) => s.id == saleId);
+      if (listIdx != -1) {
+        final s = _sales[listIdx];
+        final idx = s.items.indexWhere((i) => i.id == itemId);
+        if (idx != -1) {
+          final newItems = [...s.items];
+          newItems[idx] = updated;
+          _sales[listIdx] = s.copyWith(items: newItems);
+        }
+      }
+
+      _isLoading = false;
+      notifyListeners();
+      return updated;
+    } catch (e, stackTrace) {
+      _log('Failed to update item', error: e, stackTrace: stackTrace);
+      _error = _getErrorMessage(e);
+      _isLoading = false;
+      notifyListeners();
+      return null;
+    }
+  }
+
   void _updateSaleInList(GarageSale updatedSale) {
     final index = _sales.indexWhere((s) => s.id == updatedSale.id);
     if (index != -1) {
@@ -269,7 +424,42 @@ class SalesService extends ChangeNotifier {
     if (_selectedSale?.id == updatedSale.id) {
       _selectedSale = updatedSale;
     }
+    _upsertIntoCache([updatedSale]);
     notifyListeners();
+  }
+
+  void _upsertIntoCache(List<GarageSale> sales) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final s in sales) {
+      _cacheById[s.id] = s;
+      _lastSeenMsById[s.id] = now;
+    }
+
+    if (_cacheById.length <= _maxCachedSales) return;
+
+    final entries = _lastSeenMsById.entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value)); // oldest first
+
+    var idx = 0;
+    while (_cacheById.length > _maxCachedSales && idx < entries.length) {
+      final id = entries[idx].key;
+      _cacheById.remove(id);
+      _lastSeenMsById.remove(id);
+      idx++;
+    }
+  }
+
+  List<GarageSale> _filterCacheToBounds(_Bounds b) {
+    final out = <GarageSale>[];
+    for (final sale in _cacheById.values) {
+      if (sale.latitude >= b.minLat &&
+          sale.latitude <= b.maxLat &&
+          sale.longitude >= b.minLng &&
+          sale.longitude <= b.maxLng) {
+        out.add(sale);
+      }
+    }
+    return out;
   }
 
   String _getErrorMessage(Object error) {
@@ -283,4 +473,18 @@ class SalesService extends ChangeNotifier {
     _error = null;
     notifyListeners();
   }
+}
+
+class _Bounds {
+  final double minLat;
+  final double maxLat;
+  final double minLng;
+  final double maxLng;
+
+  const _Bounds({
+    required this.minLat,
+    required this.maxLat,
+    required this.minLng,
+    required this.maxLng,
+  });
 }
