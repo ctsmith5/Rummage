@@ -2,11 +2,10 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -16,10 +15,10 @@ import (
 )
 
 type SalesHandler struct {
-	salesService *services.SalesService
+	salesService services.SalesService
 }
 
-func NewSalesHandler(salesService *services.SalesService) *SalesHandler {
+func NewSalesHandler(salesService services.SalesService) *SalesHandler {
 	return &SalesHandler{
 		salesService: salesService,
 	}
@@ -34,22 +33,11 @@ func (h *SalesHandler) CreateSale(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("[CreateSale] User: %s", userID)
 
-	// Read and log the raw body for debugging
-	bodyBytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		log.Printf("[CreateSale] Error reading body: %v", err)
-		writeJSON(w, http.StatusBadRequest, models.NewErrorResponse("Failed to read request body"))
-		return
-	}
-	log.Printf("[CreateSale] Raw body: %s", string(bodyBytes))
-
 	var req models.CreateSaleRequest
-	if err := json.Unmarshal(bodyBytes, &req); err != nil {
-		log.Printf("[CreateSale] JSON decode error: %v", err)
-		writeJSON(w, http.StatusBadRequest, models.NewErrorResponse(fmt.Sprintf("Invalid request body: %v", err)))
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, models.NewErrorResponse("Invalid request body"))
 		return
 	}
-	log.Printf("[CreateSale] Parsed request: %+v", req)
 
 	if errors := req.Validate(); len(errors) > 0 {
 		log.Printf("[CreateSale] Validation errors: %v", errors)
@@ -105,6 +93,33 @@ func (h *SalesHandler) UpdateSale(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusInternalServerError, models.NewErrorResponse("Failed to update sale"))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, models.NewSuccessResponse(sale))
+}
+
+func (h *SalesHandler) SetSaleCoverPhoto(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	saleID := chi.URLParam(r, "saleId")
+
+	var req models.SetSaleCoverPhotoRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, models.NewErrorResponse("Invalid request body"))
+		return
+	}
+
+	sale, err := h.salesService.SetSaleCoverPhoto(userID, saleID, req.SaleCoverPhoto)
+	if err != nil {
+		if err == services.ErrSaleNotFound {
+			writeJSON(w, http.StatusNotFound, models.NewErrorResponse("Sale not found"))
+			return
+		}
+		if err == services.ErrUnauthorized {
+			writeJSON(w, http.StatusForbidden, models.NewErrorResponse("Not authorized to update this sale"))
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, models.NewErrorResponse("Failed to update sale cover photo"))
 		return
 	}
 
@@ -194,6 +209,43 @@ func (h *SalesHandler) ListSales(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, models.NewSuccessResponse(sales))
 }
 
+func (h *SalesHandler) SearchSales(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+
+	latStr := query.Get("lat")
+	lngStr := query.Get("lng")
+	q := strings.TrimSpace(query.Get("q"))
+
+	if latStr == "" || lngStr == "" {
+		writeJSON(w, http.StatusBadRequest, models.NewErrorResponse("Missing required parameters: lat, lng"))
+		return
+	}
+	if q == "" {
+		writeJSON(w, http.StatusBadRequest, models.NewErrorResponse("Missing required parameter: q"))
+		return
+	}
+
+	lat, err1 := strconv.ParseFloat(latStr, 64)
+	lng, err2 := strconv.ParseFloat(lngStr, 64)
+	if err1 != nil || err2 != nil {
+		writeJSON(w, http.StatusBadRequest, models.NewErrorResponse("Invalid lat/lng"))
+		return
+	}
+
+	radius, _ := strconv.ParseFloat(query.Get("radius"), 64)
+	if radius == 0 {
+		radius = 10 // Default 10 miles
+	}
+
+	sales, err := h.salesService.SearchNearby(lat, lng, radius, q)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.NewErrorResponse("Failed to search sales"))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, models.NewSuccessResponse(sales))
+}
+
 func (h *SalesHandler) ListSalesByBounds(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 
@@ -207,7 +259,18 @@ func (h *SalesHandler) ListSalesByBounds(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	sales, err := h.salesService.ListByBounds(minLat, maxLat, minLng, maxLng)
+	// Cap results to keep payloads and UI reasonable.
+	limit := 500
+	if rawLimit := query.Get("limit"); rawLimit != "" {
+		if v, err := strconv.Atoi(rawLimit); err == nil && v > 0 {
+			limit = v
+		}
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	sales, err := h.salesService.ListByBounds(minLat, maxLat, minLng, maxLng, limit)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, models.NewErrorResponse("Failed to list sales"))
 		return
@@ -248,6 +311,43 @@ func (h *SalesHandler) AddItem(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, models.NewSuccessResponse(item))
 }
 
+func (h *SalesHandler) UpdateItem(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	saleID := chi.URLParam(r, "saleId")
+	itemID := chi.URLParam(r, "itemId")
+
+	var req models.UpdateItemRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, models.NewErrorResponse("Invalid request body"))
+		return
+	}
+
+	if errors := req.Validate(); len(errors) > 0 {
+		writeJSON(w, http.StatusBadRequest, models.NewValidationErrorResponse(errors))
+		return
+	}
+
+	item, err := h.salesService.UpdateItem(userID, saleID, itemID, &req)
+	if err != nil {
+		if err == services.ErrSaleNotFound {
+			writeJSON(w, http.StatusNotFound, models.NewErrorResponse("Sale not found"))
+			return
+		}
+		if err == services.ErrItemNotFound {
+			writeJSON(w, http.StatusNotFound, models.NewErrorResponse("Item not found"))
+			return
+		}
+		if err == services.ErrUnauthorized {
+			writeJSON(w, http.StatusForbidden, models.NewErrorResponse("Not authorized to update items for this sale"))
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, models.NewErrorResponse("Failed to update item"))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, models.NewSuccessResponse(item))
+}
+
 func (h *SalesHandler) DeleteItem(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 	saleID := chi.URLParam(r, "saleId")
@@ -273,4 +373,3 @@ func (h *SalesHandler) DeleteItem(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, models.NewSuccessResponse(map[string]string{"message": "Item deleted successfully"}))
 }
-

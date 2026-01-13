@@ -28,7 +28,7 @@ class MapPinCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.15),
+            color: Colors.black.withAlpha((0.15 * 255).round()),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -129,7 +129,7 @@ class MapPinCard extends StatelessWidget {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.1),
+                          color: AppColors.primary.withAlpha((0.1 * 255).round()),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
@@ -143,7 +143,7 @@ class MapPinCard extends StatelessWidget {
                       )
                     else
                       const SizedBox(),
-                    Row(
+                    const Row(
                       children: [
                         Text(
                           'View Details',
@@ -153,7 +153,7 @@ class MapPinCard extends StatelessWidget {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(width: 4),
+                        SizedBox(width: 4),
                         Icon(
                           Icons.arrow_forward_ios,
                           size: 14,
@@ -207,12 +207,12 @@ class MapPinCard extends StatelessWidget {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: AppColors.mapPinInactive.withOpacity(0.2),
+          color: AppColors.mapPinInactive.withAlpha((0.2 * 255).round()),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
           _getStatusText(),
-          style: TextStyle(
+          style: const TextStyle(
             color: AppColors.mapPinInactive,
             fontSize: 11,
             fontWeight: FontWeight.bold,
@@ -255,7 +255,7 @@ class MapPinCard extends StatelessWidget {
 
     return Row(
       children: [
-        Icon(
+        const Icon(
           Icons.calendar_today_outlined,
           size: 16,
           color: AppColors.primary,
@@ -272,7 +272,7 @@ class MapPinCard extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        Icon(
+        const Icon(
           Icons.access_time,
           size: 16,
           color: AppColors.primary,

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"log"
 	"math"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,26 +21,44 @@ var (
 	ErrUnauthorized = errors.New("unauthorized to modify this sale")
 )
 
+// SalesService is the interface used by handlers. Implementations may be file-based
+// (local dev) or backed by a real database (production).
+type SalesService interface {
+	Create(userID string, req *models.CreateSaleRequest) (*models.GarageSale, error)
+	GetByID(id string) (*models.GarageSale, error)
+	Update(userID, saleID string, req *models.UpdateSaleRequest) (*models.GarageSale, error)
+	SetSaleCoverPhoto(userID, saleID, coverURL string) (*models.GarageSale, error)
+	Delete(userID, saleID string) error
+	StartSale(userID, saleID string) (*models.GarageSale, error)
+	EndSale(userID, saleID string) (*models.GarageSale, error)
+	ListNearby(lat, lng, radiusMi float64) ([]*models.GarageSale, error)
+	SearchNearby(lat, lng, radiusMi float64, q string) ([]*models.GarageSale, error)
+	ListByBounds(minLat, maxLat, minLng, maxLng float64, limit int) ([]*models.GarageSale, error)
+	AddItem(userID, saleID string, req *models.CreateItemRequest) (*models.Item, error)
+	UpdateItem(userID, saleID, itemID string, req *models.UpdateItemRequest) (*models.Item, error)
+	DeleteItem(userID, saleID, itemID string) error
+}
+
 // SalesData represents the persisted sales data structure
 type SalesData struct {
 	Sales map[string]*models.GarageSale `json:"sales"`
 	Items map[string]*models.Item       `json:"items"`
 }
 
-type SalesService struct {
+type FileSalesService struct {
 	mu    sync.RWMutex
 	sales map[string]*models.GarageSale
 	items map[string]*models.Item
 	store *storage.JSONStore
 }
 
-func NewSalesService(dataDir string) *SalesService {
+func NewFileSalesService(dataDir string) *FileSalesService {
 	store, err := storage.NewJSONStore(dataDir, "sales.json")
 	if err != nil {
 		log.Printf("Warning: Failed to create sales store: %v", err)
 	}
 
-	svc := &SalesService{
+	svc := &FileSalesService{
 		sales: make(map[string]*models.GarageSale),
 		items: make(map[string]*models.Item),
 		store: store,
@@ -52,7 +72,7 @@ func NewSalesService(dataDir string) *SalesService {
 	return svc
 }
 
-func (s *SalesService) loadFromStore() {
+func (s *FileSalesService) loadFromStore() {
 	var data SalesData
 	if err := s.store.Load(&data); err != nil {
 		log.Printf("Warning: Failed to load sales from store: %v", err)
@@ -69,7 +89,7 @@ func (s *SalesService) loadFromStore() {
 	log.Printf("Loaded %d sales and %d items from persistent storage", len(s.sales), len(s.items))
 }
 
-func (s *SalesService) saveToStore() {
+func (s *FileSalesService) saveToStore() {
 	if s.store == nil {
 		return
 	}
@@ -84,23 +104,24 @@ func (s *SalesService) saveToStore() {
 	}
 }
 
-func (s *SalesService) Create(userID string, req *models.CreateSaleRequest) (*models.GarageSale, error) {
+func (s *FileSalesService) Create(userID string, req *models.CreateSaleRequest) (*models.GarageSale, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	sale := &models.GarageSale{
-		ID:          uuid.New().String(),
-		UserID:      userID,
-		Title:       req.Title,
-		Description: req.Description,
-		Address:     req.Address,
-		Latitude:    req.Latitude,
-		Longitude:   req.Longitude,
-		StartDate:   req.StartDate,
-		EndDate:     req.EndDate,
-		IsActive:    false,
-		Items:       []models.Item{},
-		CreatedAt:   time.Now(),
+		ID:             uuid.New().String(),
+		UserID:         userID,
+		Title:          req.Title,
+		Description:    req.Description,
+		Address:        req.Address,
+		SaleCoverPhoto: "",
+		Latitude:       req.Latitude,
+		Longitude:      req.Longitude,
+		StartDate:      req.StartDate,
+		EndDate:        req.EndDate,
+		IsActive:       false,
+		Items:          []models.Item{},
+		CreatedAt:      time.Now(),
 	}
 
 	s.sales[sale.ID] = sale
@@ -108,7 +129,7 @@ func (s *SalesService) Create(userID string, req *models.CreateSaleRequest) (*mo
 	return sale, nil
 }
 
-func (s *SalesService) GetByID(id string) (*models.GarageSale, error) {
+func (s *FileSalesService) GetByID(id string) (*models.GarageSale, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -124,7 +145,7 @@ func (s *SalesService) GetByID(id string) (*models.GarageSale, error) {
 	return &saleCopy, nil
 }
 
-func (s *SalesService) Update(userID, saleID string, req *models.UpdateSaleRequest) (*models.GarageSale, error) {
+func (s *FileSalesService) Update(userID, saleID string, req *models.UpdateSaleRequest) (*models.GarageSale, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -149,7 +170,24 @@ func (s *SalesService) Update(userID, saleID string, req *models.UpdateSaleReque
 	return sale, nil
 }
 
-func (s *SalesService) Delete(userID, saleID string) error {
+func (s *FileSalesService) SetSaleCoverPhoto(userID, saleID, coverURL string) (*models.GarageSale, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	sale, exists := s.sales[saleID]
+	if !exists {
+		return nil, ErrSaleNotFound
+	}
+	if sale.UserID != userID {
+		return nil, ErrUnauthorized
+	}
+
+	sale.SaleCoverPhoto = coverURL
+	s.saveToStore()
+	return sale, nil
+}
+
+func (s *FileSalesService) Delete(userID, saleID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -174,7 +212,7 @@ func (s *SalesService) Delete(userID, saleID string) error {
 	return nil
 }
 
-func (s *SalesService) StartSale(userID, saleID string) (*models.GarageSale, error) {
+func (s *FileSalesService) StartSale(userID, saleID string) (*models.GarageSale, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -192,7 +230,7 @@ func (s *SalesService) StartSale(userID, saleID string) (*models.GarageSale, err
 	return sale, nil
 }
 
-func (s *SalesService) EndSale(userID, saleID string) (*models.GarageSale, error) {
+func (s *FileSalesService) EndSale(userID, saleID string) (*models.GarageSale, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -210,11 +248,11 @@ func (s *SalesService) EndSale(userID, saleID string) (*models.GarageSale, error
 	return sale, nil
 }
 
-func (s *SalesService) ListNearby(lat, lng, radiusMi float64) ([]*models.GarageSale, error) {
+func (s *FileSalesService) ListNearby(lat, lng, radiusMi float64) ([]*models.GarageSale, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var results []*models.GarageSale
+	results := make([]*models.GarageSale, 0)
 
 	for _, sale := range s.sales {
 		distance := haversineDistance(lat, lng, sale.Latitude, sale.Longitude)
@@ -228,12 +266,49 @@ func (s *SalesService) ListNearby(lat, lng, radiusMi float64) ([]*models.GarageS
 	return results, nil
 }
 
-// ListByBounds returns all sales within a geographic bounding box
-func (s *SalesService) ListByBounds(minLat, maxLat, minLng, maxLng float64) ([]*models.GarageSale, error) {
+func (s *FileSalesService) SearchNearby(lat, lng, radiusMi float64, q string) ([]*models.GarageSale, error) {
+	// File-based store is only for local/dev. Implement a simple in-memory filter
+	// that roughly matches the Mongo search endpoint behavior.
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var results []*models.GarageSale
+	if radiusMi <= 0 {
+		radiusMi = 10
+	}
+	q = strings.ToLower(strings.TrimSpace(q))
+
+	results := make([]*models.GarageSale, 0)
+	for _, sale := range s.sales {
+		distance := haversineDistance(lat, lng, sale.Latitude, sale.Longitude)
+		if distance > radiusMi {
+			continue
+		}
+
+		if q != "" {
+			blob := strings.ToLower(sale.Title + " " + sale.Description + " " + sale.Address)
+			if !strings.Contains(blob, q) {
+				continue
+			}
+		}
+
+		saleCopy := *sale
+		saleCopy.Items = s.getItemsForSale(sale.ID)
+		results = append(results, &saleCopy)
+	}
+
+	// Newest first, to match other endpoints.
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].CreatedAt.After(results[j].CreatedAt)
+	})
+	return results, nil
+}
+
+// ListByBounds returns all sales within a geographic bounding box
+func (s *FileSalesService) ListByBounds(minLat, maxLat, minLng, maxLng float64, limit int) ([]*models.GarageSale, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	results := make([]*models.GarageSale, 0)
 
 	for _, sale := range s.sales {
 		if sale.Latitude >= minLat && sale.Latitude <= maxLat &&
@@ -244,10 +319,19 @@ func (s *SalesService) ListByBounds(minLat, maxLat, minLng, maxLng float64) ([]*
 		}
 	}
 
+	// Stable ordering so a cap returns consistent results.
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].CreatedAt.After(results[j].CreatedAt)
+	})
+
+	if limit > 0 && len(results) > limit {
+		results = results[:limit]
+	}
+
 	return results, nil
 }
 
-func (s *SalesService) AddItem(userID, saleID string, req *models.CreateItemRequest) (*models.Item, error) {
+func (s *FileSalesService) AddItem(userID, saleID string, req *models.CreateItemRequest) (*models.Item, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -260,13 +344,18 @@ func (s *SalesService) AddItem(userID, saleID string, req *models.CreateItemRequ
 		return nil, ErrUnauthorized
 	}
 
+	imgs := req.ImageURLs
+	if imgs == nil {
+		imgs = []string{}
+	}
+
 	item := &models.Item{
 		ID:          uuid.New().String(),
 		SaleID:      saleID,
 		Name:        req.Name,
 		Description: req.Description,
 		Price:       req.Price,
-		ImageURL:    req.ImageURL,
+		ImageURLs:   imgs,
 		Category:    req.Category,
 		CreatedAt:   time.Now(),
 	}
@@ -276,7 +365,39 @@ func (s *SalesService) AddItem(userID, saleID string, req *models.CreateItemRequ
 	return item, nil
 }
 
-func (s *SalesService) DeleteItem(userID, saleID, itemID string) error {
+func (s *FileSalesService) UpdateItem(userID, saleID, itemID string, req *models.UpdateItemRequest) (*models.Item, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	sale, exists := s.sales[saleID]
+	if !exists {
+		return nil, ErrSaleNotFound
+	}
+	if sale.UserID != userID {
+		return nil, ErrUnauthorized
+	}
+
+	item, exists := s.items[itemID]
+	if !exists || item.SaleID != saleID {
+		return nil, ErrItemNotFound
+	}
+
+	imgs := req.ImageURLs
+	if imgs == nil {
+		imgs = []string{}
+	}
+
+	item.Name = req.Name
+	item.Description = req.Description
+	item.Price = req.Price
+	item.Category = req.Category
+	item.ImageURLs = imgs
+
+	s.saveToStore()
+	return item, nil
+}
+
+func (s *FileSalesService) DeleteItem(userID, saleID, itemID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -299,7 +420,7 @@ func (s *SalesService) DeleteItem(userID, saleID, itemID string) error {
 	return nil
 }
 
-func (s *SalesService) getItemsForSale(saleID string) []models.Item {
+func (s *FileSalesService) getItemsForSale(saleID string) []models.Item {
 	var items []models.Item
 	for _, item := range s.items {
 		if item.SaleID == saleID {
@@ -325,4 +446,3 @@ func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
 
 	return earthRadiusMiles * c
 }
-

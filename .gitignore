@@ -56,6 +56,7 @@ mobile/ios/.symlinks/
 mobile/ios/Flutter/Flutter.framework
 mobile/ios/Flutter/Flutter.podspec
 mobile/ios/Flutter/Generated.xcconfig
+mobile/ios/Flutter/flutter_export_environment.sh
 mobile/ios/Flutter/app.flx
 mobile/ios/Flutter/app.zip
 mobile/ios/Flutter/engine

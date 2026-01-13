@@ -12,8 +12,8 @@
 # Local build artifacts (Windows)
 *.exe
 *.dll
-server.exe
-server
+/server.exe
+/server
 
 # Environment files
 .env

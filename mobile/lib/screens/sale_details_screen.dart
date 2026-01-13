@@ -3,14 +3,17 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/garage_sale.dart';
 import '../models/item.dart';
 import '../services/sales_service.dart';
 import '../services/auth_service.dart';
 import '../services/favorite_service.dart';
+import '../services/firebase_storage_service.dart';
 import '../theme/app_colors.dart';
 import 'add_item_screen.dart';
+import 'item_details_screen.dart';
 
 class SaleDetailsScreen extends StatefulWidget {
   final String saleId;
@@ -25,6 +28,14 @@ class SaleDetailsScreen extends StatefulWidget {
 }
 
 class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
+  GarageSale? _selectedSale;
+  String? _loadError;
+  int _loadSeq = 0;
+
+  final ImagePicker _imagePicker = ImagePicker();
+  bool _isCoverUploading = false;
+  double _coverUploadProgress = 0;
+  bool _showCoverEditButton = false;
   @override
   void initState() {
     super.initState();
@@ -32,7 +43,31 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
   }
 
   Future<void> _loadSaleDetails() async {
-    await context.read<SalesService>().getSaleDetails(widget.saleId);
+    // Increment a sequence number so stale responses (from older requests) can't win.
+    final mySeq = ++_loadSeq;
+
+    // Critical: clear the previously rendered sale immediately so we don't flash stale
+    // title/images while the new sale loads.
+    setState(() {
+      _loadError = null;
+      _selectedSale = null;
+    });
+
+    final sale = await context.read<SalesService>().getSaleDetails(widget.saleId);
+    if (!mounted || mySeq != _loadSeq) return;
+
+    setState(() {
+      _selectedSale = sale;
+      _loadError = sale == null ? context.read<SalesService>().error : null;
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant SaleDetailsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.saleId != widget.saleId) {
+      _loadSaleDetails();
+    }
   }
 
   Future<void> _openMaps(GarageSale sale) async {
@@ -51,6 +86,11 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
     } else {
       await salesService.startSale(sale.id);
     }
+
+    // This screen keeps its own local `_selectedSale`; refresh so UI reflects the new status.
+    if (mounted) {
+      await _loadSaleDetails();
+    }
   }
 
   Future<void> _toggleFavorite(String saleId) async {
@@ -58,11 +98,18 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
   }
 
   void _navigateToAddItem(String saleId) {
-    Navigator.of(context).push(
+    Navigator.of(context)
+        .push<bool>(
       MaterialPageRoute(
         builder: (_) => AddItemScreen(saleId: saleId),
       ),
-    );
+    )
+        .then((created) async {
+      // If an item was created, refresh the sale so the new item appears immediately.
+      if (created == true && mounted) {
+        await _loadSaleDetails();
+      }
+    });
   }
 
   @override
@@ -89,9 +136,31 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
       ),
       body: Consumer2<SalesService, AuthService>(
         builder: (context, salesService, authService, _) {
-          final sale = salesService.selectedSale;
+          final sale = _selectedSale;
 
           if (sale == null) {
+            if (_loadError != null && _loadError!.isNotEmpty) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _loadError!,
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      ElevatedButton(
+                        onPressed: _loadSaleDetails,
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
             return const Center(child: CircularProgressIndicator());
           }
 
@@ -104,7 +173,7 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Header image/carousel
-                  _buildImageSection(sale, isDarkMode),
+                  _buildImageSection(sale, isDarkMode, isOwner),
 
                   Padding(
                     padding: const EdgeInsets.all(16),
@@ -267,45 +336,219 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
     );
   }
 
-  Widget _buildImageSection(GarageSale sale, bool isDarkMode) {
-    if (sale.items.isEmpty || sale.items.every((i) => i.imageUrl.isEmpty)) {
-      return Container(
-        height: 200,
-        color: isDarkMode ? AppColors.darkSurface : AppColors.lightSurface,
-        child: Center(
-          child: Icon(
-            Icons.storefront,
-            size: 64,
-            color: isDarkMode
-                ? AppColors.darkTextSecondary
-                : AppColors.lightTextSecondary,
-          ),
-        ),
-      );
-    }
-
-    final imagesWithUrl = sale.items.where((i) => i.imageUrl.isNotEmpty).toList();
+  Widget _buildImageSection(GarageSale sale, bool isDarkMode, bool isOwner) {
+    final hasCover = sale.saleCoverPhoto.isNotEmpty;
 
     return SizedBox(
       height: 200,
-      child: PageView.builder(
-        itemCount: imagesWithUrl.length,
-        itemBuilder: (context, index) {
-          return CachedNetworkImage(
-            imageUrl: imagesWithUrl[index].imageUrl,
-            fit: BoxFit.cover,
-            placeholder: (context, url) => Container(
-              color: isDarkMode ? AppColors.darkSurface : AppColors.lightSurface,
-              child: const Center(child: CircularProgressIndicator()),
-            ),
-            errorWidget: (context, url, error) => Container(
-              color: isDarkMode ? AppColors.darkSurface : AppColors.lightSurface,
-              child: const Icon(Icons.error),
-            ),
-          );
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          // UX: if a cover photo exists, tapping it reveals an edit button (pencil)
+          // so the user learns the image is replaceable.
+          if (hasCover && isOwner && !_isCoverUploading) {
+            setState(() {
+              _showCoverEditButton = !_showCoverEditButton;
+            });
+          }
         },
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (hasCover)
+              CachedNetworkImage(
+                imageUrl: sale.saleCoverPhoto,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => Container(
+                  color: isDarkMode ? AppColors.darkSurface : AppColors.lightSurface,
+                  child: const Center(child: CircularProgressIndicator()),
+                ),
+                errorWidget: (context, url, error) => Container(
+                  color: isDarkMode ? AppColors.darkSurface : AppColors.lightSurface,
+                  child: const Icon(Icons.error),
+                ),
+              )
+            else
+              Container(
+                color: isDarkMode ? AppColors.darkSurface : AppColors.lightSurface,
+                child: Center(
+                  child: Icon(
+                    Icons.storefront,
+                    size: 64,
+                    color: isDarkMode
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary,
+                  ),
+                ),
+              ),
+
+            if (_isCoverUploading)
+              Container(
+                color: Colors.black.withAlpha((0.35 * 255).round()),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 8),
+                      Text(
+                        _coverUploadProgress > 0
+                            ? 'Uploading… ${(_coverUploadProgress * 100).toInt()}%'
+                            : 'Uploading…',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // If no cover photo, show a clear call-to-action for owners.
+            if (!hasCover && isOwner)
+              Positioned(
+                right: 12,
+                bottom: 12,
+                child: FloatingActionButton.small(
+                  heroTag: 'upload_sale_cover_${sale.id}',
+                  onPressed: _isCoverUploading ? null : () => _showCoverImageOptions(sale.id),
+                  backgroundColor: AppColors.primary,
+                  child: const Icon(Icons.add_a_photo, color: Colors.white),
+                ),
+              ),
+
+            // If a cover exists, hide the edit affordance until the user taps the image.
+            if (hasCover && isOwner && _showCoverEditButton)
+              Positioned(
+                right: 12,
+                bottom: 12,
+                child: FloatingActionButton.small(
+                  heroTag: 'edit_sale_cover_${sale.id}',
+                  onPressed: _isCoverUploading
+                      ? null
+                      : () {
+                          setState(() {
+                            _showCoverEditButton = false;
+                          });
+                          _showCoverImageOptions(sale.id);
+                        },
+                  backgroundColor: AppColors.primary,
+                  child: const Icon(Icons.edit, color: Colors.white),
+                ),
+              ),
+          ],
+        ),
       ),
     );
+  }
+
+  void _showCoverImageOptions(String saleId) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Take Photo'),
+              onTap: () async {
+                Navigator.pop(context);
+                final image = await _imagePicker.pickImage(
+                  source: ImageSource.camera,
+                  maxWidth: 1600,
+                  maxHeight: 1600,
+                  imageQuality: 85,
+                );
+                if (image != null && mounted) {
+                  await _uploadCoverPhoto(saleId, image);
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Choose from Gallery'),
+              onTap: () async {
+                Navigator.pop(context);
+                final image = await _imagePicker.pickImage(
+                  source: ImageSource.gallery,
+                  maxWidth: 1600,
+                  maxHeight: 1600,
+                  imageQuality: 85,
+                );
+                if (image != null && mounted) {
+                  await _uploadCoverPhoto(saleId, image);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _uploadCoverPhoto(String saleId, XFile image) async {
+    setState(() {
+      _isCoverUploading = true;
+      _coverUploadProgress = 0;
+    });
+
+    final url = await FirebaseStorageService.uploadSaleCoverImage(
+      imageFile: image,
+      saleId: saleId,
+      onProgress: (p) {
+        if (!mounted) return;
+        setState(() {
+          _coverUploadProgress = p;
+        });
+      },
+    );
+
+    if (!mounted) return;
+
+    if (url == null || url.isEmpty) {
+      setState(() {
+        _isCoverUploading = false;
+      });
+      final reason = FirebaseStorageService.lastUploadError;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            reason != null && reason.isNotEmpty
+                ? 'Failed to upload cover photo: $reason'
+                : 'Failed to upload cover photo. Please try again.',
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    final updated = await context.read<SalesService>().setSaleCoverPhoto(saleId, url);
+
+    if (!mounted) return;
+
+    setState(() {
+      _isCoverUploading = false;
+      _coverUploadProgress = 0;
+      if (updated != null) {
+        _selectedSale = updated;
+      }
+    });
+
+    if (updated == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.read<SalesService>().error ?? 'Failed to save cover photo.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cover photo updated!'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    }
   }
 
   Widget _buildOwnerControls(GarageSale sale) {
@@ -353,39 +596,33 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
       ),
       itemCount: items.length,
       itemBuilder: (context, index) {
-        return _ItemCard(
-          item: items[index],
-          isOwner: isOwner,
-          onDelete: isOwner
-              ? () => _deleteItem(items[index])
-              : null,
+        final item = items[index];
+        return InkWell(
+          onTap: () async {
+            final deleted = await Navigator.of(context).push<bool>(
+              MaterialPageRoute(
+                builder: (_) => ItemDetailsScreen(
+                  saleId: widget.saleId,
+                  item: item,
+                  isOwner: isOwner,
+                ),
+              ),
+            );
+
+            // This screen maintains a local copy of sale details; refresh to reflect edits/deletes.
+            if (mounted) {
+              await _loadSaleDetails();
+            }
+
+            // If deleted, no extra action needed; refresh already handled.
+            if (deleted == true && mounted) {
+              // no-op
+            }
+          },
+          child: _ItemCard(item: item),
         );
       },
     );
-  }
-
-  Future<void> _deleteItem(Item item) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Item'),
-        content: Text('Are you sure you want to delete "${item.name}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete', style: TextStyle(color: AppColors.error)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      await context.read<SalesService>().deleteItem(widget.saleId, item.id);
-    }
   }
 
   String _formatDateRange(GarageSale sale) {
@@ -398,13 +635,9 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
 
 class _ItemCard extends StatelessWidget {
   final Item item;
-  final bool isOwner;
-  final VoidCallback? onDelete;
 
   const _ItemCard({
     required this.item,
-    required this.isOwner,
-    this.onDelete,
   });
 
   @override
@@ -422,9 +655,9 @@ class _ItemCard extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                item.imageUrl.isNotEmpty
+                item.primaryImageUrl.isNotEmpty
                     ? CachedNetworkImage(
-                        imageUrl: item.imageUrl,
+                        imageUrl: item.primaryImageUrl,
                         fit: BoxFit.cover,
                         placeholder: (context, url) => Container(
                           color: isDarkMode
@@ -438,26 +671,7 @@ class _ItemCard extends StatelessWidget {
                             _buildPlaceholder(isDarkMode),
                       )
                     : _buildPlaceholder(isDarkMode),
-                if (isOwner)
-                  Positioned(
-                    top: 4,
-                    right: 4,
-                    child: IconButton(
-                      icon: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Icon(
-                          Icons.delete,
-                          color: Colors.white,
-                          size: 18,
-                        ),
-                      ),
-                      onPressed: onDelete,
-                    ),
-                  ),
+                // Delete/edit actions live on the Item Details screen now.
               ],
             ),
           ),
@@ -492,7 +706,7 @@ class _ItemCard extends StatelessWidget {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.1),
+                        color: AppColors.primary.withAlpha((0.1 * 255).round()),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(

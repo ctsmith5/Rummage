@@ -11,6 +11,8 @@ type Config struct {
 	JWTExpiration   time.Duration
 	UploadDir       string
 	DataDir         string
+	MongoURI        string
+	MongoDB         string
 	MaxUploadSizeMB int64
 }
 
@@ -25,6 +27,8 @@ func Load() *Config {
 		JWTExpiration:   24 * time.Hour,
 		UploadDir:       getEnv("UPLOAD_DIR", "./uploads"),
 		DataDir:         getEnv("DATA_DIR", "./data"),
+		MongoURI:        getEnv("MONGO_URI", ""),
+		MongoDB:         getEnv("MONGO_DB", "rummage"),
 		MaxUploadSizeMB: 10,
 	}
 }
@@ -35,4 +39,3 @@ func getEnv(key, defaultValue string) string {
 	}
 	return defaultValue
 }
-

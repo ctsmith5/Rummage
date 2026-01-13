@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
@@ -6,6 +5,67 @@ import 'package:image_picker/image_picker.dart';
 /// Service for uploading images to Firebase Storage
 class FirebaseStorageService {
   static final FirebaseStorage _storage = FirebaseStorage.instance;
+  static String? lastUploadError;
+
+  static String _formatFirebaseStorageError(Object e) {
+    if (e is FirebaseException) {
+      final msg = e.message?.trim();
+      return 'FirebaseStorage (${e.code})${msg != null && msg.isNotEmpty ? ': $msg' : ''}';
+    }
+    return e.toString();
+  }
+
+  /// Upload a sale cover photo to Firebase Storage.
+  /// Returns the download URL of the uploaded image.
+  static Future<String?> uploadSaleCoverImage({
+    required XFile imageFile,
+    required String saleId,
+    void Function(double progress)? onProgress,
+  }) async {
+    try {
+      lastUploadError = null;
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final extension = imageFile.path.split('.').last;
+      final filename = 'cover_$timestamp.$extension';
+
+      final ref = _storage.ref().child('sales/$saleId/cover/$filename');
+
+      final bytes = await imageFile.readAsBytes();
+      debugPrint(
+        'Uploading sale cover: saleId=$saleId file=${imageFile.path} bytes=${bytes.length} dest=${ref.fullPath}',
+      );
+      final metadata = SettableMetadata(
+        contentType: 'image/$extension',
+        customMetadata: {
+          'saleId': saleId,
+          'type': 'sale_cover',
+          'uploadedAt': DateTime.now().toIso8601String(),
+        },
+      );
+
+      final uploadTask = ref.putData(bytes, metadata);
+      if (onProgress != null) {
+        uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
+          final progress = snapshot.bytesTransferred / snapshot.totalBytes;
+          onProgress(progress);
+        });
+      }
+
+      final snapshot = await uploadTask;
+      debugPrint(
+        'Sale cover upload finished: state=${snapshot.state} bytes=${snapshot.bytesTransferred}/${snapshot.totalBytes}',
+      );
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+      debugPrint('Sale cover uploaded successfully: $downloadUrl');
+      return downloadUrl;
+    } catch (e, st) {
+      final formatted = _formatFirebaseStorageError(e);
+      lastUploadError = formatted;
+      debugPrint('Error uploading sale cover image: $formatted');
+      debugPrint('Stack trace: $st');
+      return null;
+    }
+  }
 
   /// Upload an image file to Firebase Storage
   /// Returns the download URL of the uploaded image
@@ -19,8 +79,8 @@ class FirebaseStorageService {
       // Generate a unique filename
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final extension = imageFile.path.split('.').last;
-      final filename = '${itemId ?? timestamp}.$extension';
-      
+      final filename = '${itemId ?? "item"}_$timestamp.$extension';
+
       // Create storage reference
       final ref = _storage.ref().child('sales/$saleId/items/$filename');
 
@@ -52,7 +112,7 @@ class FirebaseStorageService {
 
       // Get download URL
       final downloadUrl = await snapshot.ref.getDownloadURL();
-      
+
       debugPrint('Image uploaded successfully: $downloadUrl');
       return downloadUrl;
     } catch (e) {

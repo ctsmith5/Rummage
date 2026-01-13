@@ -33,6 +33,7 @@ class AddressAutocompleteField extends StatefulWidget {
 class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
   final LayerLink _layerLink = LayerLink();
   final FocusNode _focusNode = FocusNode();
+  final GlobalKey _textFieldKey = GlobalKey();
   OverlayEntry? _overlayEntry;
   List<PlacePrediction> _predictions = [];
   bool _isLoading = false;
@@ -89,6 +90,7 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
       _isLoading = true;
     });
 
+    debugPrint('🔍 Fetching autocomplete predictions for: "$input"');
     final predictions = await PlacesService.getAutocompletePredictions(
       input,
       sessionToken: _sessionToken,
@@ -98,14 +100,17 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
 
     if (!mounted) return;
 
+    debugPrint('✅ Received ${predictions.length} predictions');
     setState(() {
       _predictions = predictions;
       _isLoading = false;
     });
 
     if (_predictions.isNotEmpty && _focusNode.hasFocus) {
+      debugPrint('📋 Showing overlay with ${_predictions.length} predictions');
       _showOverlay();
     } else {
+      debugPrint('❌ Not showing overlay - predictions: ${_predictions.length}, hasFocus: ${_focusNode.hasFocus}');
       _removeOverlay();
     }
   }
@@ -113,11 +118,21 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
   void _showOverlay() {
     _removeOverlay();
 
+    // Wait for the next frame to ensure RenderBox is laid out
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_focusNode.hasFocus || _predictions.isEmpty) {
+        return;
+      }
+
+      // Get the width from the TextFormField's RenderBox
+      final RenderBox? renderBox = _textFieldKey.currentContext?.findRenderObject() as RenderBox?;
+      final width = renderBox?.size.width ?? MediaQuery.of(context).size.width - 32;
+
+      debugPrint('📐 Overlay width: $width, predictions: ${_predictions.length}');
+
     _overlayEntry = OverlayEntry(
-      builder: (context) => Positioned(
-        width: context.findRenderObject() != null
-            ? (context.findRenderObject() as RenderBox).size.width
-            : 300,
+        builder: (overlayContext) => Positioned(
+          width: width,
         child: CompositedTransformFollower(
           link: _layerLink,
           showWhenUnlinked: false,
@@ -125,13 +140,14 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
           child: Material(
             elevation: 8,
             borderRadius: BorderRadius.circular(12),
+              color: Colors.transparent,
             child: Container(
               constraints: const BoxConstraints(maxHeight: 250),
               decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
+                  color: Theme.of(overlayContext).cardColor,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: AppColors.primary.withOpacity(0.2),
+                  color: AppColors.primary.withAlpha((0.2 * 255).round()),
                 ),
               ),
               child: ClipRRect(
@@ -156,7 +172,10 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
       ),
     );
 
-    Overlay.of(context).insert(_overlayEntry!);
+      final overlay = Overlay.of(context);
+      overlay.insert(_overlayEntry!);
+      debugPrint('✅ Overlay inserted successfully');
+    });
   }
 
   void _removeOverlay() {
@@ -196,6 +215,7 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
     return CompositedTransformTarget(
       link: _layerLink,
       child: TextFormField(
+        key: _textFieldKey,
         controller: widget.controller,
         focusNode: _focusNode,
         decoration: InputDecoration(
@@ -250,7 +270,7 @@ class _PredictionTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            Icon(
+                const Icon(
               Icons.place,
               color: AppColors.primary,
               size: 20,

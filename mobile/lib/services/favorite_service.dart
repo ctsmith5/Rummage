@@ -1,15 +1,18 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/favorite.dart';
+import '../models/garage_sale.dart';
 import 'api_client.dart';
 
 class FavoriteService extends ChangeNotifier {
   List<Favorite> _favorites = [];
+  List<GarageSale> _favoritedSales = [];
   Set<String> _favoritedSaleIds = {};
   bool _isLoading = false;
   String? _error;
 
   List<Favorite> get favorites => _favorites;
+  List<GarageSale> get favoritedSales => _favoritedSales;
   bool get isLoading => _isLoading;
   String? get error => _error;
 
@@ -25,6 +28,27 @@ class FavoriteService extends ChangeNotifier {
       final data = response['data'] as List<dynamic>?;
       _favorites = data?.map((e) => Favorite.fromJson(e)).toList() ?? [];
       _favoritedSaleIds = _favorites.map((f) => f.saleId).toSet();
+      _isLoading = false;
+      notifyListeners();
+    } catch (e) {
+      _error = 'Failed to load favorites';
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadFavoritedSales() async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final response = await ApiClient.get('/favorites/sales');
+      final data = response['data'] as List<dynamic>?;
+      _favoritedSales = data
+              ?.map((e) => GarageSale.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [];
       _isLoading = false;
       notifyListeners();
     } catch (e) {
@@ -54,6 +78,7 @@ class FavoriteService extends ChangeNotifier {
       await ApiClient.delete('/sales/$saleId/favorite');
       _favorites.removeWhere((f) => f.saleId == saleId);
       _favoritedSaleIds.remove(saleId);
+      _favoritedSales.removeWhere((s) => s.id == saleId);
       notifyListeners();
       return true;
     } catch (e) {

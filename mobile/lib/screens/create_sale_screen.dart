@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 
 import '../models/garage_sale.dart';
 import '../services/sales_service.dart';
-import '../services/location_service.dart';
 import '../services/places_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/address_autocomplete_field.dart';
@@ -29,20 +28,6 @@ class _CreateSaleScreenState extends State<CreateSaleScreen> {
   double _latitude = 0;
   double _longitude = 0;
   bool _isLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeLocation();
-  }
-
-  void _initializeLocation() {
-    final locationService = context.read<LocationService>();
-    if (locationService.hasLocation) {
-      _latitude = locationService.latitude;
-      _longitude = locationService.longitude;
-    }
-  }
 
   @override
   void dispose() {
@@ -87,22 +72,6 @@ class _CreateSaleScreenState extends State<CreateSaleScreen> {
       setState(() {
         _endTime = time;
       });
-    }
-  }
-
-  Future<void> _useCurrentLocation() async {
-    final locationService = context.read<LocationService>();
-    final position = await locationService.getCurrentLocation();
-    
-    if (position != null) {
-      setState(() {
-        _latitude = position.latitude;
-        _longitude = position.longitude;
-      });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Location updated')),
-      );
     }
   }
 
@@ -177,7 +146,8 @@ class _CreateSaleScreenState extends State<CreateSaleScreen> {
           backgroundColor: AppColors.success,
         ),
       );
-      Navigator.of(context).pop();
+      // Return the created sale so the caller can update selection/UI immediately.
+      Navigator.of(context).pop(sale);
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -190,7 +160,6 @@ class _CreateSaleScreenState extends State<CreateSaleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final dateFormat = DateFormat('EEEE, MMM d, yyyy');
 
     return Scaffold(
@@ -236,8 +205,6 @@ class _CreateSaleScreenState extends State<CreateSaleScreen> {
             // Address with autocomplete
             AddressAutocompleteField(
               controller: _addressController,
-              userLatitude: _latitude != 0 ? _latitude : null,
-              userLongitude: _longitude != 0 ? _longitude : null,
               onPlaceSelected: _onPlaceSelected,
               hintText: 'Start typing an address...',
               validator: (value) {
@@ -246,51 +213,6 @@ class _CreateSaleScreenState extends State<CreateSaleScreen> {
                 }
                 return null;
               },
-            ),
-
-            const SizedBox(height: 16),
-
-            // Location
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.location_on, color: AppColors.primary),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Location',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    if (_latitude != 0 && _longitude != 0)
-                      Text(
-                        'Coordinates: ${_latitude.toStringAsFixed(4)}, ${_longitude.toStringAsFixed(4)}',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      )
-                    else
-                      Text(
-                        'No location set',
-                        style: TextStyle(
-                          color: isDarkMode
-                              ? AppColors.darkTextSecondary
-                              : AppColors.lightTextSecondary,
-                        ),
-                      ),
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: _useCurrentLocation,
-                      icon: const Icon(Icons.my_location),
-                      label: const Text('Use Current Location'),
-                    ),
-                  ],
-                ),
-              ),
             ),
 
             const SizedBox(height: 16),

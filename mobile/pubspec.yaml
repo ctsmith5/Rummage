@@ -1,7 +1,7 @@
 name: rummage
 description: A garage sale discovery app for browsing local sales in your neighborhood.
 publish_to: 'none'
-version: 1.0.0+2
+version: 1.0.0+7
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -30,6 +30,7 @@ dependencies:
   
   # Firebase
   firebase_core: ^3.8.1
+  firebase_auth: ^5.3.3
   firebase_storage: ^12.3.7
   
   # Storage
