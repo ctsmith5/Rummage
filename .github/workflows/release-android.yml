@@ -2,7 +2,7 @@ name: Release Android (Google Play)
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
     inputs:
       track:
