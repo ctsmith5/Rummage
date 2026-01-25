@@ -1,0 +1,19 @@
+name: Migrate Environment Secrets to Repo
+on: 
+  workflow_dispatch: # Allows you to run this manually
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: Production # Must match your environment name
+    steps:
+      - name: Migrate Secrets
+        env:
+          # List all the secrets you want to move here
+          SECRET_VAL_1: ${{ secrets.MY_SECRET_NAME_1 }}
+          SECRET_VAL_2: ${{ secrets.MY_SECRET_NAME_2 }}
+          GH_TOKEN: ${{ secrets.MIGRATION_TOKEN }}
+        run: |
+          # Use the GitHub CLI (pre-installed) to set repo secrets
+          echo "$SECRET_VAL_1" | gh secret set MY_SECRET_NAME_1
+          echo "$SECRET_VAL_2" | gh secret set MY_SECRET_NAME_2
