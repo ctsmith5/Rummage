@@ -61,8 +61,9 @@ jobs:
 
       - name: Prepare Android keystore + key.properties
         run: |
-          # Keystore is expected at: mobile/android/upload-keystore.jks
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > mobile/android/upload-keystore.jks
+          # IMPORTANT: In our Gradle config, `storeFile=upload-keystore.jks` is resolved
+          # relative to the `mobile/android/app/` module directory.
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > mobile/android/app/upload-keystore.jks
 
           cat > mobile/android/key.properties <<EOF
           storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
