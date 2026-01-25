@@ -1,0 +1,6 @@
+git_url(ENV["MATCH_GIT_URL"])
+storage_mode("git")
+type("appstore")
+
+# CI will supply MATCH_PASSWORD and an SSH key (MATCH_SSH_PRIVATE_KEY) to access the repo.
+
