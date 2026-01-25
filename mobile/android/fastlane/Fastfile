@@ -5,6 +5,7 @@ platform :android do
   lane :release do |options|
     track = (options[:track] || ENV["PLAY_TRACK"] || "internal").to_s
     build_number = (options[:build_number] || ENV["GITHUB_RUN_NUMBER"] || Time.now.to_i.to_s).to_s
+    release_status = (options[:release_status] || ENV["PLAY_RELEASE_STATUS"] || "draft").to_s
 
     Dir.chdir(File.expand_path("../..", __dir__)) do
       sh("flutter", "pub", "get")
@@ -20,6 +21,7 @@ platform :android do
     supply(
       aab: aab_path,
       track: track,
+      release_status: release_status,
       package_name: ENV["ANDROID_PACKAGE_NAME"] || "com.rummageapps.rummage",
       json_key: json_key_path,
       skip_upload_metadata: true,
