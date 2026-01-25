@@ -13,8 +13,8 @@ import '../theme/app_colors.dart';
 import '../widgets/map_pin_card.dart';
 import '../widgets/sale_map.dart';
 import 'saved_screen.dart';
+import 'my_sales_screen.dart';
 import 'sale_details_screen.dart';
-import 'create_sale_screen.dart';
 import 'auth/login_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -140,16 +140,26 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _navigateToDetails(GarageSale sale) async {
-    await Navigator.of(context).push(
+    final deletedSaleId = await Navigator.of(context).push<String?>(
       MaterialPageRoute(
         builder: (_) => SaleDetailsScreen(saleId: sale.id),
       ),
     );
 
+    if (!mounted) return;
+    if (deletedSaleId == sale.id) {
+      setState(() {
+        _selectedSale = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sale deleted')),
+      );
+      return;
+    }
+
     // When returning from Sale Details, the sale may have been started/ended.
     // The map pins are driven by SalesService (so they update), but the bottom
     // card uses our local `_selectedSale` reference, which can be stale.
-    if (!mounted) return;
     final salesService = context.read<SalesService>();
     final refreshed = salesService.sales.firstWhere(
       (s) => s.id == sale.id,
@@ -157,21 +167,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     setState(() {
       _selectedSale = refreshed;
-    });
-  }
-
-  Future<void> _navigateToCreate() async {
-    final created = await Navigator.of(context).push<GarageSale>(
-      MaterialPageRoute(
-        builder: (_) => const CreateSaleScreen(),
-      ),
-    );
-
-    if (!mounted || created == null) return;
-
-    // Ensure the map card reflects the newly created sale (not a stale previous selection).
-    setState(() {
-      _selectedSale = created;
     });
   }
 
@@ -191,29 +186,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
-        // Intentionally no leading home button and no search button in the AppBar.
-        leadingWidth: 72,
-        leading: Padding(
-          // Match the search bar's horizontal padding (16).
-          padding: const EdgeInsets.only(left: 16),
-          child: Material(
-            color: AppColors.primary,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: InkWell(
-              customBorder: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              onTap: _navigateToCreate,
-              child: const SizedBox(
-                width: 40,
-                height: 40,
-                child: Icon(Icons.add, color: Colors.white),
-              ),
-            ),
-          ),
-        ),
+        // No create button in AppBar (moved to My Sales tab).
         title: const Text(
           'Rummage',
           style: TextStyle(
@@ -246,6 +219,7 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           _buildHomeTab(),
           const SavedScreen(),
+          const MySalesScreen(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -261,6 +235,10 @@ class _HomeScreenState extends State<HomeScreen> {
             favs.loadFavorites();
             favs.loadFavoritedSales();
           }
+          // My Sales tab is also kept alive; force refresh when selected.
+          if (index == 2) {
+            context.read<SalesService>().loadMySales();
+          }
         },
         items: const [
           BottomNavigationBarItem(
@@ -272,6 +250,11 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(Icons.favorite_outline),
             activeIcon: Icon(Icons.favorite),
             label: 'Saved',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.storefront_outlined),
+            activeIcon: Icon(Icons.storefront),
+            label: 'My Sales',
           ),
         ],
       ),

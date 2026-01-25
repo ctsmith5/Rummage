@@ -415,6 +415,63 @@ func (s *MongoSalesService) ListByBounds(minLat, maxLat, minLng, maxLng float64,
 	return results, nil
 }
 
+func (s *MongoSalesService) ListByUser(userID string, limit int) ([]*models.GarageSale, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if limit <= 0 {
+		limit = 500
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	filter := bson.M{"user_id": userID}
+
+	cur, err := s.salesColl.Find(
+		ctx,
+		filter,
+		options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}).SetLimit(int64(limit)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+
+	saleDocs := make([]mongoSaleDoc, 0)
+	saleIDs := make([]string, 0)
+	for cur.Next(ctx) {
+		var d mongoSaleDoc
+		if err := cur.Decode(&d); err != nil {
+			return nil, err
+		}
+		saleDocs = append(saleDocs, d)
+		saleIDs = append(saleIDs, d.ID)
+	}
+	if err := cur.Err(); err != nil {
+		return nil, err
+	}
+
+	results := make([]*models.GarageSale, 0, len(saleDocs))
+	if len(saleDocs) == 0 {
+		return results, nil
+	}
+
+	itemsBySale, err := s.getItemsForSales(ctx, saleIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, d := range saleDocs {
+		m := saleDocToModel(d)
+		if items, ok := itemsBySale[d.ID]; ok {
+			m.Items = items
+		}
+		results = append(results, m)
+	}
+	return results, nil
+}
+
 func (s *MongoSalesService) ListNearby(lat, lng, radiusMi float64) ([]*models.GarageSale, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

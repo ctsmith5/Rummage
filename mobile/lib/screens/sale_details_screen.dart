@@ -15,6 +15,8 @@ import '../theme/app_colors.dart';
 import 'add_item_screen.dart';
 import 'item_details_screen.dart';
 
+import '../widgets/sale_status_badge.dart';
+
 class SaleDetailsScreen extends StatefulWidget {
   final String saleId;
 
@@ -36,6 +38,8 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
   bool _isCoverUploading = false;
   double _coverUploadProgress = 0;
   bool _showCoverEditButton = false;
+  bool _isDeletingSale = false;
+  bool _isUpdatingSaleTime = false;
   @override
   void initState() {
     super.initState();
@@ -95,6 +99,264 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
 
   Future<void> _toggleFavorite(String saleId) async {
     await context.read<FavoriteService>().toggleFavorite(saleId);
+  }
+
+  Future<void> _editSaleTime(GarageSale sale) async {
+    if (_isUpdatingSaleTime) return;
+
+    final dateFormat = DateFormat('EEEE, MMM d, yyyy');
+    var selectedDate = DateTime(sale.startDate.year, sale.startDate.month, sale.startDate.day);
+    var startTime = TimeOfDay.fromDateTime(sale.startDate);
+    var endTime = TimeOfDay.fromDateTime(sale.endDate);
+
+    final result = await showModalBottomSheet<_EditSaleTimeResult>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return SafeArea(
+          child: StatefulBuilder(
+            builder: (context, setSheetState) {
+              Future<void> pickDate() async {
+                // Allow rescheduling to any date (including past dates).
+                // `showDatePicker` asserts `initialDate` is within [firstDate, lastDate].
+                final firstAllowedDate = DateTime(2000, 1, 1);
+                final lastAllowedDate = DateTime(2100, 12, 31);
+                final initialDate = selectedDate.isBefore(firstAllowedDate)
+                    ? firstAllowedDate
+                    : (selectedDate.isAfter(lastAllowedDate) ? lastAllowedDate : selectedDate);
+
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: initialDate,
+                  firstDate: firstAllowedDate,
+                  lastDate: lastAllowedDate,
+                );
+                if (picked == null) return;
+                setSheetState(() {
+                  selectedDate = picked;
+                });
+              }
+
+              Future<void> pickStartTime() async {
+                final picked = await showTimePicker(
+                  context: context,
+                  initialTime: startTime,
+                );
+                if (picked == null) return;
+                setSheetState(() {
+                  startTime = picked;
+                });
+              }
+
+              Future<void> pickEndTime() async {
+                final picked = await showTimePicker(
+                  context: context,
+                  initialTime: endTime,
+                );
+                if (picked == null) return;
+                setSheetState(() {
+                  endTime = picked;
+                });
+              }
+
+              return Padding(
+                padding: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  top: 16,
+                  bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'Edit Date & Time',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('Date'),
+                              subtitle: Text(dateFormat.format(selectedDate)),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: pickDate,
+                            ),
+                            const Divider(),
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('Start Time'),
+                              subtitle: Text(startTime.format(context)),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: pickStartTime,
+                            ),
+                            const Divider(),
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('End Time'),
+                              subtitle: Text(endTime.format(context)),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: pickEndTime,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          final start = DateTime(
+                            selectedDate.year,
+                            selectedDate.month,
+                            selectedDate.day,
+                            startTime.hour,
+                            startTime.minute,
+                          );
+                          final end = DateTime(
+                            selectedDate.year,
+                            selectedDate.month,
+                            selectedDate.day,
+                            endTime.hour,
+                            endTime.minute,
+                          );
+                          Navigator.of(context).pop(
+                            _EditSaleTimeResult(start: start, end: end),
+                          );
+                        },
+                        child: const Text('Save'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+
+    if (result == null || !mounted) return;
+
+    if (!result.end.isAfter(result.start)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('End time must be after start time.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isUpdatingSaleTime = true;
+    });
+
+    final ok = await context.read<SalesService>().updateSale(
+          sale.id,
+          CreateSaleRequest(
+            title: sale.title,
+            description: sale.description,
+            address: sale.address,
+            latitude: sale.latitude,
+            longitude: sale.longitude,
+            startDate: result.start,
+            endDate: result.end,
+          ),
+        );
+
+    if (!mounted) return;
+    setState(() {
+      _isUpdatingSaleTime = false;
+    });
+
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.read<SalesService>().error ?? 'Failed to update sale time.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    await _loadSaleDetails();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Sale time updated'),
+        backgroundColor: AppColors.success,
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Future<void> _deleteSale(String saleId) async {
+    if (_isDeletingSale) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete sale?'),
+        content: const Text(
+          'This will permanently delete the sale and its items. This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _isDeletingSale = true;
+    });
+
+    final ok = await context.read<SalesService>().deleteSale(saleId);
+    if (!mounted) return;
+
+    setState(() {
+      _isDeletingSale = false;
+    });
+
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.read<SalesService>().error ?? 'Failed to delete sale.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    // Return the deleted sale id so callers (Home/Saved) can clear any stale selection.
+    Navigator.of(context).pop<String>(saleId);
   }
 
   void _navigateToAddItem(String saleId) {
@@ -189,25 +451,10 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                                 style: Theme.of(context).textTheme.headlineMedium,
                               ),
                             ),
-                            if (sale.isActive)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.success,
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: const Text(
-                                  'LIVE NOW',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
+                            SaleStatusBadge(
+                              sale: sale,
+                              compact: false,
+                            ),
                           ],
                         ),
 
@@ -558,16 +805,42 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Sale Controls',
-              style: Theme.of(context).textTheme.titleMedium,
+            Row(
+              children: [
+                Text(
+                  'Sale Controls',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const Spacer(),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert),
+                  onSelected: (value) {
+                    if (value == 'edit_time') {
+                      _editSaleTime(sale);
+                    } else if (value == 'delete') {
+                      _deleteSale(sale.id);
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: 'edit_time',
+                      child: Text('Edit time'),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Text('Delete sale'),
+                    ),
+                  ],
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () => _toggleSaleStatus(sale),
+                    onPressed:
+                        (_isDeletingSale || _isUpdatingSaleTime) ? null : () => _toggleSaleStatus(sale),
                     style: ElevatedButton.styleFrom(
                       backgroundColor:
                           sale.isActive ? AppColors.error : AppColors.success,
@@ -741,3 +1014,10 @@ class _ItemCard extends StatelessWidget {
   }
 }
 
+class _EditSaleTimeResult {
+  final DateTime start;
+  final DateTime end;  const _EditSaleTimeResult({
+    required this.start,
+    required this.end,
+  });
+}

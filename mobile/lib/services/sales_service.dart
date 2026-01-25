@@ -6,9 +6,12 @@ import 'api_client.dart';
 
 class SalesService extends ChangeNotifier {
   List<GarageSale> _sales = [];
+  List<GarageSale> _mySales = [];
   GarageSale? _selectedSale;
   bool _isLoading = false;
+  bool _isMySalesLoading = false;
   String? _error;
+  String? _mySalesError;
 
   // Persist pins between bounds loads so we don't "forget" previously seen sales
   // when the user pans away and back.
@@ -18,9 +21,12 @@ class SalesService extends ChangeNotifier {
   _Bounds? _currentBounds;
 
   List<GarageSale> get sales => _sales;
+  List<GarageSale> get mySales => _mySales;
   GarageSale? get selectedSale => _selectedSale;
   bool get isLoading => _isLoading;
+  bool get isMySalesLoading => _isMySalesLoading;
   String? get error => _error;
+  String? get mySalesError => _mySalesError;
 
   void _log(String message, {Object? error, StackTrace? stackTrace}) {
     final timestamp = DateTime.now().toIso8601String();
@@ -244,13 +250,44 @@ class SalesService extends ChangeNotifier {
     }
   }
 
+  Future<void> loadMySales() async {
+    _isMySalesLoading = true;
+    _mySalesError = null;
+    notifyListeners();
+
+    _log('Loading my sales');
+    try {
+      final response = await ApiClient.get('/sales/mine');
+      final data = response['data'] as List<dynamic>?;
+      final loaded = data?.map((e) => GarageSale.fromJson(e)).toList() ?? [];
+
+      // Keep caches up to date so other surfaces (e.g. map card) can benefit.
+      _upsertIntoCache(loaded);
+      _mySales = loaded;
+
+      _isMySalesLoading = false;
+      notifyListeners();
+    } catch (e, stackTrace) {
+      _log('Failed to load my sales', error: e, stackTrace: stackTrace);
+      _mySalesError = _getErrorMessage(e);
+      _isMySalesLoading = false;
+      notifyListeners();
+    }
+  }
+
   Future<bool> updateSale(String saleId, CreateSaleRequest request) async {
     _log('Updating sale: $saleId');
-    
+
     try {
       await ApiClient.put('/sales/$saleId', body: request.toJson());
       _log('Sale updated successfully');
-      await loadNearbySales(0, 0); // Reload sales
+
+      // Pull the updated sale and upsert it into all local surfaces so the UI (map pins,
+      // selected-sale card, My Sales list, etc.) reflects the new schedule immediately.
+      final response = await ApiClient.get('/sales/$saleId');
+      final refreshed = GarageSale.fromJson(response['data']);
+      _updateSaleInList(refreshed);
+
       return true;
     } catch (e, stackTrace) {
       _log('Failed to update sale', error: e, stackTrace: stackTrace);
@@ -266,6 +303,7 @@ class SalesService extends ChangeNotifier {
     try {
       await ApiClient.delete('/sales/$saleId');
       _sales.removeWhere((s) => s.id == saleId);
+      _mySales.removeWhere((s) => s.id == saleId);
       _cacheById.remove(saleId);
       _lastSeenMsById.remove(saleId);
       _log('Sale deleted successfully');
@@ -421,9 +459,16 @@ class SalesService extends ChangeNotifier {
     if (index != -1) {
       _sales[index] = updatedSale;
     }
+
+    final myIdx = _mySales.indexWhere((s) => s.id == updatedSale.id);
+    if (myIdx != -1) {
+      _mySales[myIdx] = updatedSale;
+    }
+
     if (_selectedSale?.id == updatedSale.id) {
       _selectedSale = updatedSale;
     }
+
     _upsertIntoCache([updatedSale]);
     notifyListeners();
   }

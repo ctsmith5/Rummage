@@ -31,6 +31,8 @@ type SalesService interface {
 	Delete(userID, saleID string) error
 	StartSale(userID, saleID string) (*models.GarageSale, error)
 	EndSale(userID, saleID string) (*models.GarageSale, error)
+	// ListByUser returns sales created by the given user, sorted by created_at desc.
+	ListByUser(userID string, limit int) ([]*models.GarageSale, error)
 	ListNearby(lat, lng, radiusMi float64) ([]*models.GarageSale, error)
 	SearchNearby(lat, lng, radiusMi float64, q string) ([]*models.GarageSale, error)
 	ListByBounds(minLat, maxLat, minLng, maxLng float64, limit int) ([]*models.GarageSale, error)
@@ -246,6 +248,37 @@ func (s *FileSalesService) EndSale(userID, saleID string) (*models.GarageSale, e
 	sale.IsActive = false
 	s.saveToStore()
 	return sale, nil
+}
+
+func (s *FileSalesService) ListByUser(userID string, limit int) ([]*models.GarageSale, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if limit <= 0 {
+		limit = 500
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	results := make([]*models.GarageSale, 0)
+	for _, sale := range s.sales {
+		if sale.UserID != userID {
+			continue
+		}
+		copy := *sale
+		copy.Items = s.getItemsForSale(sale.ID)
+		results = append(results, &copy)
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].CreatedAt.After(results[j].CreatedAt)
+	})
+
+	if len(results) > limit {
+		results = results[:limit]
+	}
+	return results, nil
 }
 
 func (s *FileSalesService) ListNearby(lat, lng, radiusMi float64) ([]*models.GarageSale, error) {

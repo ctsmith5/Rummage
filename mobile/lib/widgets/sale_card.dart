@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../models/garage_sale.dart';
 import '../theme/app_colors.dart';
+import 'sale_status_badge.dart';
 
 class SaleCard extends StatelessWidget {
   final GarageSale sale;
@@ -74,25 +75,7 @@ class SaleCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (sale.isActive)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.success.withAlpha((0.2 * 255).round()),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Text(
-                              'LIVE',
-                              style: TextStyle(
-                                color: AppColors.success,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
+                        SaleStatusBadge(sale: sale),
                       ],
                     ),
                     const SizedBox(height: 4),

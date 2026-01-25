@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../models/garage_sale.dart';
 import '../theme/app_colors.dart';
+import 'sale_status_badge.dart';
 
 /// A compact card designed to overlay on the map when a sale marker is selected.
 /// Shows seller name, dates/times, and active status prominently.
@@ -52,7 +53,7 @@ class MapPinCard extends StatelessWidget {
                 Row(
                   children: [
                     // Status indicator
-                    _buildStatusBadge(),
+                    SaleStatusBadge(sale: sale),
                     const SizedBox(width: 12),
                     // Title and close button
                     Expanded(
@@ -169,67 +170,6 @@ class MapPinCard extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  Widget _buildStatusBadge() {
-    if (sale.isActive) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: AppColors.success,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 8,
-              height: 8,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 6),
-            const Text(
-              'LIVE NOW',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ],
-        ),
-      );
-    } else {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: AppColors.mapPinInactive.withAlpha((0.2 * 255).round()),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          _getStatusText(),
-          style: const TextStyle(
-            color: AppColors.mapPinInactive,
-            fontSize: 11,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      );
-    }
-  }
-
-  String _getStatusText() {
-    final now = DateTime.now();
-    if (sale.startDate.isAfter(now)) {
-      return 'UPCOMING';
-    } else if (sale.endDate.isBefore(now)) {
-      return 'ENDED';
-    }
-    return 'SCHEDULED';
   }
 
   Widget _buildDateTimeRow(bool isDarkMode) {
