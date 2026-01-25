@@ -189,6 +189,23 @@ func (h *SalesHandler) EndSale(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, models.NewSuccessResponse(sale))
 }
 
+func (h *SalesHandler) ListMySales(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	if userID == "" {
+		writeJSON(w, http.StatusUnauthorized, models.NewErrorResponse("Unauthorized"))
+		return
+	}
+
+	// Cap to a reasonable default.
+	sales, err := h.salesService.ListByUser(userID, 500)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, models.NewErrorResponse("Failed to list sales"))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, models.NewSuccessResponse(sales))
+}
+
 func (h *SalesHandler) ListSales(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 

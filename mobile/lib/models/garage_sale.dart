@@ -41,14 +41,16 @@ class GarageSale {
       saleCoverPhoto: json['sale_cover_photo'] as String? ?? '',
       latitude: (json['latitude'] as num).toDouble(),
       longitude: (json['longitude'] as num).toDouble(),
-      startDate: DateTime.parse(json['start_date'] as String),
-      endDate: DateTime.parse(json['end_date'] as String),
+      // Backend returns RFC3339 timestamps (typically UTC). Convert to device-local
+      // so the UI consistently shows the user's local timezone.
+      startDate: DateTime.parse(json['start_date'] as String).toLocal(),
+      endDate: DateTime.parse(json['end_date'] as String).toLocal(),
       isActive: json['is_active'] as bool? ?? false,
       items: (json['items'] as List<dynamic>?)
               ?.map((e) => Item.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
-      createdAt: DateTime.parse(json['created_at'] as String),
+      createdAt: DateTime.parse(json['created_at'] as String).toLocal(),
     );
   }
 

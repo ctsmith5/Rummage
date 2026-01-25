@@ -1,0 +1,32 @@
+default_platform(:android)
+
+platform :android do
+  desc "Build a release AAB and upload to Google Play"
+  lane :release do |options|
+    track = (options[:track] || ENV["PLAY_TRACK"] || "internal").to_s
+    build_number = (options[:build_number] || ENV["GITHUB_RUN_NUMBER"] || Time.now.to_i.to_s).to_s
+
+    Dir.chdir(File.expand_path("../..", __dir__)) do
+      sh("flutter", "pub", "get")
+      sh("flutter", "build", "appbundle", "--release", "--build-number", build_number)
+    end
+
+    aab_path = File.expand_path("../../build/app/outputs/bundle/release/app-release.aab", __dir__)
+    json_key_path = ENV["PLAY_SERVICE_ACCOUNT_JSON_PATH"]
+
+    UI.user_error!("PLAY_SERVICE_ACCOUNT_JSON_PATH is required") if json_key_path.to_s.strip.empty?
+    UI.user_error!("AAB not found at #{aab_path}") unless File.exist?(aab_path)
+
+    supply(
+      aab: aab_path,
+      track: track,
+      package_name: ENV["ANDROID_PACKAGE_NAME"] || "com.rummageapps.rummage",
+      json_key: json_key_path,
+      skip_upload_metadata: true,
+      skip_upload_changelogs: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+    )
+  end
+end
+

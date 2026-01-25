@@ -7,12 +7,17 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:131071073084:android:ca23a75490d3fe63399c39",
+        "mobilesdk_app_id": "1:131071073084:android:e578aaadc6ad1a58399c39",
         "android_client_info": {
-          "package_name": "com.example.rummage"
+          "package_name": "com.rummageapps.rummage"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "131071073084-0de4r4lefjimv33f5q7n6hkbrt9lkv4o.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCmt5zzhH-KZm3_g8hXu202OlsHYQis8eo"
@@ -20,7 +25,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "131071073084-0de4r4lefjimv33f5q7n6hkbrt9lkv4o.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "131071073084-oe0k7g6o2bn3a187qpnho3610nnoe21e.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.RummageApp.Rummage"
+              }
+            }
+          ]
         }
       }
     }

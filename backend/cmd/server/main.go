@@ -85,6 +85,7 @@ func main() {
 			// Sales routes
 			r.Route("/sales", func(r chi.Router) {
 				r.Get("/", salesHandler.ListSales)
+				r.Get("/mine", salesHandler.ListMySales)
 				r.Get("/search", salesHandler.SearchSales)
 				r.Get("/bounds", salesHandler.ListSalesByBounds)
 				r.Post("/", salesHandler.CreateSale)

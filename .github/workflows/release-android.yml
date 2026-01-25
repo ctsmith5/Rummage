@@ -1,0 +1,97 @@
+name: Release Android (Google Play)
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      track:
+        description: "Google Play track"
+        required: true
+        default: "internal"
+        type: choice
+        options:
+          - internal
+          - closed
+          - open
+          - production
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    defaults:
+      run:
+        shell: bash
+
+    env:
+      ANDROID_PACKAGE_NAME: com.rummageapps.rummage
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+
+      - name: Install fastlane
+        run: gem install fastlane -N
+
+      - name: Prepare Play service account JSON
+        run: |
+          mkdir -p /tmp/play
+          cat > /tmp/play/service-account.json <<'EOF'
+          ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          EOF
+
+      - name: Prepare Android keystore + key.properties
+        run: |
+          # Keystore is expected at: mobile/android/upload-keystore.jks
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > mobile/android/upload-keystore.jks
+
+          cat > mobile/android/key.properties <<EOF
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storeFile=upload-keystore.jks
+          EOF
+
+      - name: Flutter pub get
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Build AAB (release)
+        working-directory: mobile
+        run: |
+          flutter build appbundle --release --build-number "${GITHUB_RUN_NUMBER}"
+
+      - name: Upload to Google Play
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON_PATH: /tmp/play/service-account.json
+        working-directory: mobile/android
+        run: |
+          fastlane android release \
+            track:"${{ inputs.track || 'internal' }}" \
+            build_number:"${GITHUB_RUN_NUMBER}"
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-aab
+          path: mobile/build/app/outputs/bundle/release/app-release.aab
+
