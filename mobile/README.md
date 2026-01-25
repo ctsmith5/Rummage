@@ -35,7 +35,7 @@ Set these in **GitHub → Settings → Secrets and variables → Actions**.
 
 #### Android (Google Play)
 
-- `ANDROID_KEYSTORE_BASE64`: base64 of your upload keystore (CI writes it to `mobile/android/app/upload-keystore.jks`)
+- `ANDROID_KEYSTORE_BASE64`: base64 of your upload keystore (CI writes it to `mobile/android/app/upload-keystore.jks`). **Make it a single-line base64 string**.
 - `ANDROID_KEYSTORE_PASSWORD`
 - `ANDROID_KEY_PASSWORD`
 - `ANDROID_KEY_ALIAS`
