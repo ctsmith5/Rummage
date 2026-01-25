@@ -61,9 +61,12 @@ jobs:
 
       - name: Prepare Android keystore + key.properties
         run: |
+          set -euo pipefail
           # IMPORTANT: In our Gradle config, `storeFile=upload-keystore.jks` is resolved
           # relative to the `mobile/android/app/` module directory.
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > mobile/android/app/upload-keystore.jks
+          #
+          # NOTE: Use printf (not echo) so the base64 payload is not corrupted by shell escaping.
+          printf '%s' "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > mobile/android/app/upload-keystore.jks
 
           cat > mobile/android/key.properties <<EOF
           storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -71,6 +74,9 @@ jobs:
           keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
           storeFile=upload-keystore.jks
           EOF
+
+          # Fail fast with a clear error if the keystore secret is malformed/corrupted.
+          keytool -list -keystore mobile/android/app/upload-keystore.jks -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >/dev/null
 
       - name: Flutter pub get
         working-directory: mobile
