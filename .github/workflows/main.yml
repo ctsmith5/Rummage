@@ -10,9 +10,16 @@ jobs:
       - name: Migrate Secrets
         env:
           # List all the secrets you want to move here
-          SECRET_VAL_1: ${{ secrets.MY_SECRET_NAME_1 }}
-          SECRET_VAL_2: ${{ secrets.MY_SECRET_NAME_2 }}
-          GH_TOKEN: ${{ secrets.MIGRATION_TOKEN }}
+          SECRET_VAL_1: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          SECRET_VAL_2: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          SECRET_VAL_3: ${{ secrets.ANDROID_KEY_ALIAS }}
+          SECRET_VAL_4: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_IDD }}
+          SECRET_VAL_5: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID}}
+          SECRET_VAL_6: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8}}
+          SECRET_VAL_7: ${{ secrets.MATCH_GIT_URL }}
+          SECRET_VAL_8: ${{ secrets.MATCH_PASSWORD}}
+          SECRET_VAL_9: ${{ secrets.MATCH_SSH_PRIVATE_KEY}}
+          GH_TOKEN: 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
         run: |
           # Use the GitHub CLI (pre-installed) to set repo secrets
           echo "$SECRET_VAL_1" | gh secret set MY_SECRET_NAME_1
