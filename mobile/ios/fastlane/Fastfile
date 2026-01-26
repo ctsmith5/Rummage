@@ -16,6 +16,12 @@ platform :ios do
     # Create/unlock a temporary keychain on CI so certs can be imported reliably.
     setup_ci
 
+    # Ensure Flutter generates ios/Flutter/Generated.xcconfig before CocoaPods runs.
+    Dir.chdir(File.expand_path("../..", __dir__)) do
+      sh("flutter", "pub", "get")
+      sh("flutter", "precache", "--ios") if is_ci
+    end
+
     # Install certs/profiles for App Store distribution.
     # If the match repo is empty (first run), CI must be able to create and push
     # the signing identity. You can force readonly behavior by setting:
