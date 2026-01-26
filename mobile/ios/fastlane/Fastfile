@@ -4,12 +4,17 @@ platform :ios do
   desc "Build a release IPA and upload to TestFlight"
   lane :testflight do |options|
     build_number = (options[:build_number] || ENV["GITHUB_RUN_NUMBER"] || Time.now.to_i.to_s).to_s
+    app_identifier = ENV["APP_IDENTIFIER"] || "com.RummageApp.Rummage"
+    team_id = ENV["APPLE_TEAM_ID"] || "2779EQ3QB6"
 
     api_key = app_store_connect_api_key(
       key_id: ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
       issuer_id: ENV.fetch("APP_STORE_CONNECT_API_ISSUER_ID"),
       key_content: ENV.fetch("APP_STORE_CONNECT_API_KEY_P8")
     )
+
+    # Create/unlock a temporary keychain on CI so certs can be imported reliably.
+    setup_ci
 
     # Install certs/profiles for App Store distribution.
     # If the match repo is empty (first run), CI must be able to create and push
@@ -19,18 +24,32 @@ platform :ios do
     match(
       type: "appstore",
       api_key: api_key,
+      app_identifier: app_identifier,
+      team_id: team_id,
       readonly: readonly_match
     )
 
-    # Build via Flutter so we honor pubspec + Flutter build settings.
-    Dir.chdir(File.expand_path("../..", __dir__)) do
-      sh("flutter", "pub", "get")
-      sh("flutter", "build", "ipa", "--release", "--build-number", build_number)
-    end
+    # Ensure pods are installed (Runner.xcworkspace exists).
+    cocoapods(clean_install: true)
 
-    ipa_glob = File.expand_path("../../build/ios/ipa/*.ipa", __dir__)
-    ipa_path = Dir[ipa_glob].sort.last
-    UI.user_error!("No IPA found at #{ipa_glob}") if ipa_path.nil?
+    # Build with Fastlane (manual signing via match), avoiding Xcode account prompts.
+    gym(
+      workspace: "Runner.xcworkspace",
+      scheme: "Runner",
+      clean: true,
+      export_method: "app-store",
+      output_directory: "../build/ios/ipa",
+      output_name: "Rummage.ipa",
+      export_options: {
+        signingStyle: "manual",
+        provisioningProfiles: {
+          app_identifier => "match AppStore #{app_identifier}",
+        },
+      }
+    )
+
+    ipa_path = File.expand_path("../build/ios/ipa/Rummage.ipa", __dir__)
+    UI.user_error!("No IPA found at #{ipa_path}") unless File.exist?(ipa_path)
 
     pilot(
       api_key: api_key,
