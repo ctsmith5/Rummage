@@ -3,7 +3,12 @@ default_platform(:ios)
 platform :ios do
   desc "Build a release IPA and upload to TestFlight"
   lane :testflight do |options|
-    build_number = (options[:build_number] || ENV["GITHUB_RUN_NUMBER"] || Time.now.to_i.to_s).to_s
+    build_number = (
+      options[:build_number] ||
+      ENV["GITHUB_RUN_ID"] ||
+      ENV["GITHUB_RUN_NUMBER"] ||
+      Time.now.to_i.to_s
+    ).to_s
     app_identifier = ENV["APP_IDENTIFIER"] || "com.RummageApp.Rummage"
     team_id = ENV["APPLE_TEAM_ID"] || "2779EQ3QB6"
     profile_name = "match AppStore #{app_identifier}"
