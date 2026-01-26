@@ -12,10 +12,14 @@ platform :ios do
     )
 
     # Install certs/profiles for App Store distribution.
+    # If the match repo is empty (first run), CI must be able to create and push
+    # the signing identity. You can force readonly behavior by setting:
+    # MATCH_READONLY=true
+    readonly_match = (ENV["MATCH_READONLY"] || "false").to_s.downcase == "true"
     match(
       type: "appstore",
       api_key: api_key,
-      readonly: is_ci
+      readonly: readonly_match
     )
 
     # Build via Flutter so we honor pubspec + Flutter build settings.
