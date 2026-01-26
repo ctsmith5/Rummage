@@ -22,6 +22,7 @@ class MapPinCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final isActiveNow = saleTimeStatusFor(sale, DateTime.now()) == SaleTimeStatus.active;
 
     return Container(
       decoration: BoxDecoration(
@@ -34,7 +35,7 @@ class MapPinCard extends StatelessWidget {
             offset: const Offset(0, 8),
           ),
         ],
-        border: sale.isActive
+        border: isActiveNow
             ? Border.all(color: AppColors.success, width: 2)
             : null,
       ),
