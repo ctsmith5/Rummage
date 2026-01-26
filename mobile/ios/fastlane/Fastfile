@@ -48,11 +48,6 @@ platform :ios do
       export_method: "app-store",
       export_team_id: team_id,
       codesigning_identity: "Apple Distribution",
-      xcargs: [
-        "DEVELOPMENT_TEAM=#{team_id}",
-        "CODE_SIGN_STYLE=Manual",
-        "PROVISIONING_PROFILE_SPECIFIER=\"#{profile_name}\""
-      ].join(" "),
       output_directory: "../build/ios/ipa",
       output_name: "Rummage.ipa",
       export_options: {
