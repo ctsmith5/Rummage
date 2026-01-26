@@ -53,6 +53,11 @@ platform :ios do
       export_method: "app-store",
       export_team_id: team_id,
       codesigning_identity: "Apple Distribution",
+      # Runner.xcodeproj uses CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)".
+      # When building via `gym`, we must pass FLUTTER_BUILD_NUMBER explicitly or Xcode
+      # will use the value from Generated.xcconfig / stale defaults, causing TestFlight
+      # to reject duplicate CFBundleVersion uploads.
+      xcargs: "FLUTTER_BUILD_NUMBER=#{build_number}",
       output_directory: "../build/ios/ipa",
       output_name: "Rummage.ipa",
       export_options: {
