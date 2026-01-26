@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../models/garage_sale.dart';
 import '../theme/app_colors.dart';
+import 'sale_status_badge.dart';
 import '../theme/map_styles.dart';
 
 class FitBoundsRequest {
@@ -173,17 +174,17 @@ class _SaleMapState extends State<SaleMap> {
   Set<Marker> _buildMarkers() {
     return widget.sales.map((sale) {
       final isSelected = sale.id == widget.selectedSale?.id;
+      final status = saleTimeStatusFor(sale, DateTime.now());
+      final isActiveNow = status == SaleTimeStatus.active;
       return Marker(
         markerId: MarkerId(sale.id),
         position: LatLng(sale.latitude, sale.longitude),
         icon: BitmapDescriptor.defaultMarkerWithHue(
-          sale.isActive 
-              ? BitmapDescriptor.hueOrange
-              : BitmapDescriptor.hueRed,
+          isActiveNow ? BitmapDescriptor.hueOrange : BitmapDescriptor.hueRed,
         ),
         infoWindow: InfoWindow(
           title: sale.title,
-          snippet: sale.isActive ? '🟢 LIVE NOW' : sale.address,
+          snippet: isActiveNow ? '🟢 ACTIVE NOW' : sale.address,
           onTap: () => widget.onSaleSelected?.call(sale),
         ),
         onTap: () => widget.onSaleSelected?.call(sale),
@@ -400,7 +401,7 @@ class SaleMapPlaceholder extends StatelessWidget {
                           : null,
                       child: Icon(
                         Icons.location_pin,
-                        color: sale.isActive
+                        color: saleTimeStatusFor(sale, DateTime.now()) == SaleTimeStatus.active
                             ? AppColors.primary
                             : AppColors.mapPinInactive,
                         size: isSelected ? 48 : 40,
@@ -423,7 +424,7 @@ class SaleMapPlaceholder extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (sale.isActive)
+                    if (saleTimeStatusFor(sale, DateTime.now()) == SaleTimeStatus.active)
                       Container(
                         margin: const EdgeInsets.only(top: 2),
                         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
@@ -432,7 +433,7 @@ class SaleMapPlaceholder extends StatelessWidget {
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: const Text(
-                          'LIVE',
+                          'ACTIVE',
                           style: TextStyle(
                             fontSize: 8,
                             color: Colors.white,

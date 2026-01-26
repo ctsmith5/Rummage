@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -35,8 +33,6 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
   GarageSale? _selectedSale;
   String? _loadError;
   int _loadSeq = 0;
-  Timer? _statusUiTimer;
-  bool _isAutoSyncingActiveStatus = false;
 
   final ImagePicker _imagePicker = ImagePicker();
   bool _isCoverUploading = false;
@@ -48,82 +44,6 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
   void initState() {
     super.initState();
     _loadSaleDetails();
-  }
-
-  @override
-  void dispose() {
-    _statusUiTimer?.cancel();
-    super.dispose();
-  }
-
-  bool _isInScheduledWindow(GarageSale sale) {
-    final now = DateTime.now();
-    return !now.isBefore(sale.startDate) && now.isBefore(sale.endDate);
-  }
-
-  Future<void> _syncActiveStatusIfNeeded(GarageSale sale) async {
-    if (_isAutoSyncingActiveStatus) return;
-    final auth = context.read<AuthService>();
-    final isOwner = sale.userId == auth.currentUser?.id;
-    if (!isOwner) return;
-
-    final now = DateTime.now();
-    final inWindow = _isInScheduledWindow(sale);
-
-    // If the scheduled window is active but the backend flag hasn't been started, start it.
-    if (inWindow && !sale.isActive) {
-      _isAutoSyncingActiveStatus = true;
-      try {
-        await context.read<SalesService>().startSale(sale.id);
-      } finally {
-        _isAutoSyncingActiveStatus = false;
-      }
-      if (mounted) {
-        await _loadSaleDetails();
-      }
-      return;
-    }
-
-    // If the window has ended but the backend flag is still active, end it.
-    if (!now.isBefore(sale.endDate) && sale.isActive) {
-      _isAutoSyncingActiveStatus = true;
-      try {
-        await context.read<SalesService>().endSale(sale.id);
-      } finally {
-        _isAutoSyncingActiveStatus = false;
-      }
-      if (mounted) {
-        await _loadSaleDetails();
-      }
-    }
-  }
-
-  void _scheduleStatusUiRefresh(GarageSale sale) {
-    _statusUiTimer?.cancel();
-
-    final now = DateTime.now();
-    DateTime? boundary;
-    if (now.isBefore(sale.startDate)) {
-      boundary = sale.startDate;
-    } else if (now.isBefore(sale.endDate)) {
-      boundary = sale.endDate;
-    } else {
-      boundary = null;
-    }
-
-    if (boundary == null) return;
-
-    // Fire slightly after the boundary to ensure we cross it.
-    final delay = boundary.difference(now) + const Duration(seconds: 1);
-    if (delay.isNegative) return;
-
-    _statusUiTimer = Timer(delay, () {
-      if (!mounted) return;
-      // Ensure the backend active flag stays in sync when the schedule crosses boundaries.
-      _syncActiveStatusIfNeeded(sale);
-      setState(() {}); // re-evaluate button state immediately
-      _scheduleStatusUiRefresh(sale); // reschedule for the next boundary (start -> end)
-    });
   }
 
   Future<void> _loadSaleDetails() async {
@@ -144,12 +64,6 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
       _selectedSale = sale;
       _loadError = sale == null ? context.read<SalesService>().error : null;
     });
-
-    if (sale != null) {
-      _scheduleStatusUiRefresh(sale);
-      // On manual refresh / open, keep start/end button consistent with the schedule.
-      _syncActiveStatusIfNeeded(sale);
-    }
   }
 
   @override
@@ -169,19 +83,8 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
     }
   }
 
-  Future<void> _toggleSaleStatus(GarageSale sale) async {
-    final salesService = context.read<SalesService>();
-    if (sale.isActive) {
-      await salesService.endSale(sale.id);
-    } else {
-      await salesService.startSale(sale.id);
-    }
-
-    // This screen keeps its own local `_selectedSale`; refresh so UI reflects the new status.
-    if (mounted) {
-      await _loadSaleDetails();
-    }
-  }
+  // Status is driven entirely by the scheduled window (start/end times).
+  // We do not expose manual Start/End controls anymore.
 
   Future<void> _toggleFavorite(String saleId) async {
     await context.read<FavoriteService>().toggleFavorite(saleId);
@@ -396,28 +299,58 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
 
   Future<void> _deleteSale(String saleId) async {
     if (_isDeletingSale) return;
+    final controller = TextEditingController();
+    var canDelete = false;
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete sale?'),
-        content: const Text(
-          'This will permanently delete the sale and its items. This action cannot be undone.',
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Delete sale'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'This will permanently delete the sale and its items. This action cannot be undone.',
+              ),
+              const SizedBox(height: 12),
+              const Text('Type DELETE to confirm:'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                onChanged: (v) {
+                  final ok = v.trim() == 'DELETE';
+                  if (ok != canDelete) {
+                    setDialogState(() {
+                      canDelete = ok;
+                    });
+                  }
+                },
+                decoration: const InputDecoration(
+                  hintText: 'DELETE',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: canDelete ? () => Navigator.of(context).pop(true) : null,
+              style: TextButton.styleFrom(foregroundColor: AppColors.error),
+              child: const Text('Delete'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Delete'),
-          ),
-        ],
       ),
     );
 
+    controller.dispose();
     if (confirmed != true || !mounted) return;
 
     setState(() {
@@ -547,22 +480,32 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                         const SizedBox(height: 8),
 
                         // Date and time
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.calendar_today,
-                              size: 18,
-                              color: AppColors.primary,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              _formatDateRange(sale),
-                              style: const TextStyle(
+                        InkWell(
+                          onTap: isOwner ? () => _editSaleTime(sale) : null,
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.calendar_today,
+                                size: 18,
                                 color: AppColors.primary,
-                                fontWeight: FontWeight.w500,
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _formatDateRange(sale),
+                                  style: TextStyle(
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w500,
+                                    decoration: isOwner ? TextDecoration.underline : null,
+                                  ),
+                                ),
+                              ),
+                              if (isOwner) ...[
+                                const SizedBox(width: 8),
+                                const Icon(Icons.edit, size: 16, color: AppColors.primary),
+                              ],
+                            ],
+                          ),
                         ),
 
                         const SizedBox(height: 8),
@@ -604,12 +547,6 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                             sale.description,
                             style: Theme.of(context).textTheme.bodyLarge,
                           ),
-                        ],
-
-                        // Owner controls
-                        if (isOwner) ...[
-                          const SizedBox(height: 24),
-                          _buildOwnerControls(sale),
                         ],
 
                         const SizedBox(height: 24),
@@ -657,6 +594,24 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                           )
                         else
                           _buildItemsGrid(sale.items, isOwner),
+
+                        // Owner-only destructive action at the very bottom.
+                        if (isOwner) ...[
+                          const SizedBox(height: 28),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: _isDeletingSale ? null : () => _deleteSale(sale.id),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.error,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                              child: Text(_isDeletingSale ? 'Deleting…' : 'Delete Sale'),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                        ],
                       ],
                     ),
                   ),
@@ -882,65 +837,6 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
         ),
       );
     }
-  }
-
-  Widget _buildOwnerControls(GarageSale sale) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
-                  'Sale Controls',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const Spacer(),
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert),
-                  onSelected: (value) {
-                    if (value == 'edit_time') {
-                      _editSaleTime(sale);
-                    } else if (value == 'delete') {
-                      _deleteSale(sale.id);
-                    }
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(
-                      value: 'edit_time',
-                      child: Text('Edit time'),
-                    ),
-                    PopupMenuItem(
-                      value: 'delete',
-                      child: Text('Delete sale'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed:
-                        (_isDeletingSale || _isUpdatingSaleTime) ? null : () => _toggleSaleStatus(sale),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                          sale.isActive ? AppColors.error : AppColors.success,
-                    ),
-                    icon: Icon(sale.isActive ? Icons.stop : Icons.play_arrow),
-                    label: Text(sale.isActive ? 'End Sale' : 'Start Sale'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   Widget _buildItemsGrid(List<Item> items, bool isOwner) {
