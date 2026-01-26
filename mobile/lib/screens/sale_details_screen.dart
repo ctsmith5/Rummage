@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -33,6 +35,8 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
   GarageSale? _selectedSale;
   String? _loadError;
   int _loadSeq = 0;
+  Timer? _statusUiTimer;
+  bool _isAutoSyncingActiveStatus = false;
 
   final ImagePicker _imagePicker = ImagePicker();
   bool _isCoverUploading = false;
@@ -44,6 +48,82 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
   void initState() {
     super.initState();
     _loadSaleDetails();
+  }
+
+  @override
+  void dispose() {
+    _statusUiTimer?.cancel();
+    super.dispose();
+  }
+
+  bool _isInScheduledWindow(GarageSale sale) {
+    final now = DateTime.now();
+    return !now.isBefore(sale.startDate) && now.isBefore(sale.endDate);
+  }
+
+  Future<void> _syncActiveStatusIfNeeded(GarageSale sale) async {
+    if (_isAutoSyncingActiveStatus) return;
+    final auth = context.read<AuthService>();
+    final isOwner = sale.userId == auth.currentUser?.id;
+    if (!isOwner) return;
+
+    final now = DateTime.now();
+    final inWindow = _isInScheduledWindow(sale);
+
+    // If the scheduled window is active but the backend flag hasn't been started, start it.
+    if (inWindow && !sale.isActive) {
+      _isAutoSyncingActiveStatus = true;
+      try {
+        await context.read<SalesService>().startSale(sale.id);
+      } finally {
+        _isAutoSyncingActiveStatus = false;
+      }
+      if (mounted) {
+        await _loadSaleDetails();
+      }
+      return;
+    }
+
+    // If the window has ended but the backend flag is still active, end it.
+    if (!now.isBefore(sale.endDate) && sale.isActive) {
+      _isAutoSyncingActiveStatus = true;
+      try {
+        await context.read<SalesService>().endSale(sale.id);
+      } finally {
+        _isAutoSyncingActiveStatus = false;
+      }
+      if (mounted) {
+        await _loadSaleDetails();
+      }
+    }
+  }
+
+  void _scheduleStatusUiRefresh(GarageSale sale) {
+    _statusUiTimer?.cancel();
+
+    final now = DateTime.now();
+    DateTime? boundary;
+    if (now.isBefore(sale.startDate)) {
+      boundary = sale.startDate;
+    } else if (now.isBefore(sale.endDate)) {
+      boundary = sale.endDate;
+    } else {
+      boundary = null;
+    }
+
+    if (boundary == null) return;
+
+    // Fire slightly after the boundary to ensure we cross it.
+    final delay = boundary.difference(now) + const Duration(seconds: 1);
+    if (delay.isNegative) return;
+
+    _statusUiTimer = Timer(delay, () {
+      if (!mounted) return;
+      // Ensure the backend active flag stays in sync when the schedule crosses boundaries.
+      _syncActiveStatusIfNeeded(sale);
+      setState(() {}); // re-evaluate button state immediately
+      _scheduleStatusUiRefresh(sale); // reschedule for the next boundary (start -> end)
+    });
   }
 
   Future<void> _loadSaleDetails() async {
@@ -64,6 +144,12 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
       _selectedSale = sale;
       _loadError = sale == null ? context.read<SalesService>().error : null;
     });
+
+    if (sale != null) {
+      _scheduleStatusUiRefresh(sale);
+      // On manual refresh / open, keep start/end button consistent with the schedule.
+      _syncActiveStatusIfNeeded(sale);
+    }
   }
 
   @override
