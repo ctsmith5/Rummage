@@ -58,7 +58,8 @@ platform :ios do
       }
     )
 
-    ipa_path = File.expand_path("../build/ios/ipa/Rummage.ipa", __dir__)
+    ipa_path = lane_context[SharedValues::IPA_OUTPUT_PATH]
+    UI.user_error!("No IPA produced by gym") if ipa_path.to_s.strip.empty?
     UI.user_error!("No IPA found at #{ipa_path}") unless File.exist?(ipa_path)
 
     pilot(
