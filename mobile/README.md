@@ -63,3 +63,15 @@ Notes:
 - **Manual**: run from GitHub Actions tab via `workflow_dispatch`.
   - Android workflow exposes a `track` input (`internal`, `closed`, `open`, `production`).
 
+## Image moderation (required)
+
+All user-uploaded images (sale cover, item images, profile photos) are required to go through a server-side SafeSearch scan.
+
+- **Storage rules file**: `mobile/firebase_storage.rules`
+- **Workflow**:
+  - App uploads to `pending/...` with metadata identifying the upload (userId/type/saleId/itemId).
+  - A Cloud Run moderation worker scans the object with Vision SafeSearch and either:
+    - Promotes it to an approved path (`sales/...` or `users/.../profile/...`) and marks metadata `moderation=approved`
+    - Or deletes it, clears references in Mongo, and records a strike on the user.
+
+You must publish the rules in Firebase Console → Storage → Rules (or via Firebase CLI if you use it).

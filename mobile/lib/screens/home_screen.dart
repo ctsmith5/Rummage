@@ -9,6 +9,7 @@ import '../services/auth_service.dart';
 import '../services/sales_service.dart';
 import '../services/location_service.dart';
 import '../services/favorite_service.dart';
+import '../services/profile_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/map_pin_card.dart';
 import '../widgets/sale_map.dart';
@@ -16,6 +17,7 @@ import 'saved_screen.dart';
 import 'my_sales_screen.dart';
 import 'sale_details_screen.dart';
 import 'auth/login_screen.dart';
+import 'profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -52,6 +54,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadData() async {
     final locationService = context.read<LocationService>();
     final salesService = context.read<SalesService>();
+    // Prefetch profile so ProfileScreen can render with data immediately.
+    // Don't block map load on this.
+    // ignore: unawaited_futures
+    context.read<ProfileService>().loadProfile();
     await locationService.getCurrentLocation();
     if (!mounted) return;
 
@@ -195,22 +201,17 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         actions: [
-          PopupMenuButton<String>(
+          IconButton(
             icon: Icon(
-              Icons.more_vert,
-              color: isDarkMode ? Colors.white : AppColors.lightTextPrimary,
+              Icons.person_outline,
+              color: AppColors.primary,
             ),
-            onSelected: (value) {
-              if (value == 'logout') {
-                _logout();
-              }
+            onPressed: () {
+              final initial = context.read<ProfileService>().profile;
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => ProfileScreen(initialProfile: initial)),
+              );
             },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'logout',
-                child: Text('Logout'),
-              ),
-            ],
           ),
         ],
       ),
@@ -507,7 +508,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   
                   // Selected sale card at bottom
-                  if (_selectedSale != null)
+                  if (_selectedSale != null &&
+                      salesService.sales.any((s) => s.id == _selectedSale!.id))
                     Positioned(
                       left: 16,
                       right: 16,
@@ -517,6 +519,19 @@ class _HomeScreenState extends State<HomeScreen> {
                         onTap: () async => _navigateToDetails(_selectedSale!),
                         onClose: () => setState(() => _selectedSale = null),
                       ),
+                    ),
+                  if (_selectedSale != null &&
+                      !salesService.sales.any((s) => s.id == _selectedSale!.id))
+                    // If the selected sale no longer exists in the current pins (e.g. deleted),
+                    // clear it after the frame so we don't keep showing a broken card.
+                    Builder(
+                      builder: (_) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (!mounted) return;
+                          setState(() => _selectedSale = null);
+                        });
+                        return const SizedBox.shrink();
+                      },
                     ),
                 ],
               );

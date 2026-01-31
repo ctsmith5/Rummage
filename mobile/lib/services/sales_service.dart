@@ -154,8 +154,26 @@ class SalesService extends ChangeNotifier {
 
       final data = response['data'] as List<dynamic>?;
       final loaded = data?.map((e) => GarageSale.fromJson(e)).toList() ?? [];
+
+      // If the backend returns fewer than our limit, we can safely assume the response
+      // is complete for the requested bounds. Purge any cached sales in these bounds
+      // that are missing from the response (e.g. deleted accounts/sales).
+      if (_currentBounds != null && loaded.length < _maxCachedSales) {
+        final loadedIds = loaded.map((s) => s.id).toSet();
+        final cachedInBounds = _filterCacheToBounds(_currentBounds!).map((s) => s.id).toList();
+        for (final id in cachedInBounds) {
+          if (!loadedIds.contains(id)) {
+            _cacheById.remove(id);
+            _lastSeenMsById.remove(id);
+            if (_selectedSale?.id == id) {
+              _selectedSale = null;
+            }
+          }
+        }
+      }
+
       _upsertIntoCache(loaded);
-      _sales = _currentBounds != null ? _filterCacheToBounds(_currentBounds!) : loaded;
+      _sales = loaded;
       _log('Loaded ${_sales.length} sales within bounds');
       _isLoading = false;
       notifyListeners();
@@ -178,10 +196,36 @@ class SalesService extends ChangeNotifier {
       return _selectedSale;
     } catch (e, stackTrace) {
       _log('Failed to load sale details', error: e, stackTrace: stackTrace);
+      // If the sale no longer exists, purge it from caches so pins/cards disappear.
+      if (e is ApiException && e.statusCode == 404) {
+        _sales.removeWhere((s) => s.id == saleId);
+        _mySales.removeWhere((s) => s.id == saleId);
+        _cacheById.remove(saleId);
+        _lastSeenMsById.remove(saleId);
+        if (_selectedSale?.id == saleId) {
+          _selectedSale = null;
+        }
+      }
       _error = _getErrorMessage(e);
       notifyListeners();
       return null;
     }
+  }
+
+  /// Clears all locally cached sales state (pins, selections, caches).
+  /// Useful after destructive actions (logout/account deletion) to avoid stale UI.
+  void clearAll() {
+    _sales = [];
+    _mySales = [];
+    _selectedSale = null;
+    _error = null;
+    _mySalesError = null;
+    _isLoading = false;
+    _isMySalesLoading = false;
+    _currentBounds = null;
+    _cacheById.clear();
+    _lastSeenMsById.clear();
+    notifyListeners();
   }
 
   Future<GarageSale?> setSaleCoverPhoto(String saleId, String coverUrl) async {

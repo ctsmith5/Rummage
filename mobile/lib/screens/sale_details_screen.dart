@@ -7,10 +7,12 @@ import 'package:image_picker/image_picker.dart';
 
 import '../models/garage_sale.dart';
 import '../models/item.dart';
+import '../models/public_profile.dart';
 import '../services/sales_service.dart';
 import '../services/auth_service.dart';
 import '../services/favorite_service.dart';
 import '../services/firebase_storage_service.dart';
+import '../services/profile_service.dart';
 import '../theme/app_colors.dart';
 import 'add_item_screen.dart';
 import 'item_details_screen.dart';
@@ -33,6 +35,10 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
   GarageSale? _selectedSale;
   String? _loadError;
   int _loadSeq = 0;
+
+  PublicProfile? _ownerProfile;
+  String? _ownerUserId;
+  bool _ownerLoading = false;
 
   final ImagePicker _imagePicker = ImagePicker();
   bool _isCoverUploading = false;
@@ -64,6 +70,43 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
       _selectedSale = sale;
       _loadError = sale == null ? context.read<SalesService>().error : null;
     });
+
+    if (sale != null) {
+      _loadOwnerProfileIfNeeded(sale.userId);
+    }
+  }
+
+  Future<void> _loadOwnerProfileIfNeeded(String userId) async {
+    if (_ownerUserId == userId && (_ownerProfile != null || _ownerLoading)) return;
+    setState(() {
+      _ownerUserId = userId;
+      _ownerProfile = null;
+      _ownerLoading = true;
+    });
+    final prof = await context.read<ProfileService>().loadPublicProfile(userId);
+    if (!mounted) return;
+    setState(() {
+      _ownerProfile = prof;
+      _ownerLoading = false;
+    });
+  }
+
+  Future<void> _emailOwner() async {
+    final email = (_ownerProfile?.email ?? '').trim();
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Owner email not available')),
+      );
+      return;
+    }
+    final uri = Uri(scheme: 'mailto', path: email);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open email app')),
+      );
+    }
   }
 
   @override
@@ -479,65 +522,117 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
 
                         const SizedBox(height: 8),
 
-                        // Date and time
-                        InkWell(
-                          onTap: isOwner ? () => _editSaleTime(sale) : null,
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.calendar_today,
-                                size: 18,
-                                color: AppColors.primary,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  _formatDateRange(sale),
-                                  style: TextStyle(
-                                    color: AppColors.primary,
-                                    fontWeight: FontWeight.w500,
-                                    decoration: isOwner ? TextDecoration.underline : null,
+                        // Info bar: schedule+address (left) + owner identity/email (right)
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      InkWell(
+                                        onTap: isOwner ? () => _editSaleTime(sale) : null,
+                                        child: Row(
+                                          children: [
+                                            const Icon(
+                                              Icons.calendar_today,
+                                              size: 18,
+                                              color: AppColors.primary,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                _formatDateRange(sale),
+                                                style: TextStyle(
+                                                  color: AppColors.primary,
+                                                  fontWeight: FontWeight.w600,
+                                                  decoration: null,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      GestureDetector(
+                                        onTap: () => _openMaps(sale),
+                                        child: Row(
+                                          children: [
+                                            const Icon(
+                                              Icons.location_on,
+                                              size: 18,
+                                              color: AppColors.primary,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                sale.address,
+                                                style: TextStyle(
+                                                  color: isDarkMode
+                                                      ? AppColors.darkTextSecondary
+                                                      : AppColors.lightTextSecondary,
+                                                  decoration: null,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ),
-                              if (isOwner) ...[
-                                const SizedBox(width: 8),
-                                const Icon(Icons.edit, size: 16, color: AppColors.primary),
+                                const SizedBox(width: 12),
+                                InkWell(
+                                  onTap: _emailOwner,
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (_ownerLoading)
+                                          const SizedBox(
+                                            width: 44,
+                                            height: 44,
+                                            child: CircularProgressIndicator(strokeWidth: 2),
+                                          )
+                                        else
+                                          CircleAvatar(
+                                            radius: 22,
+                                            backgroundColor: AppColors.lightSurface,
+                                            backgroundImage: (_ownerProfile?.photoUrl ?? '').isNotEmpty
+                                                ? NetworkImage(_ownerProfile!.photoUrl)
+                                                : null,
+                                            child: (_ownerProfile?.photoUrl ?? '').isEmpty
+                                                ? const Icon(Icons.person, color: AppColors.primary)
+                                                : null,
+                                          ),
+                                        const SizedBox(height: 6),
+                                        SizedBox(
+                                          width: 96,
+                                          child: Text(
+                                            (_ownerProfile?.displayName ?? '').isNotEmpty
+                                                ? _ownerProfile!.displayName
+                                                : 'Seller',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              color: AppColors.primary,
+                                              decoration: TextDecoration.none,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ],
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        // Address
-                        GestureDetector(
-                          onTap: () => _openMaps(sale),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.location_on,
-                                size: 18,
-                                color: AppColors.primary,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  sale.address,
-                                  style: TextStyle(
-                                    color: isDarkMode
-                                        ? AppColors.darkTextSecondary
-                                        : AppColors.lightTextSecondary,
-                                    decoration: TextDecoration.underline,
-                                  ),
-                                ),
-                              ),
-                              const Icon(
-                                Icons.open_in_new,
-                                size: 16,
-                                color: AppColors.primary,
-                              ),
-                            ],
+                            ),
                           ),
                         ),
 
@@ -779,9 +874,11 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
       _coverUploadProgress = 0;
     });
 
+    final userId = context.read<AuthService>().currentUser?.id ?? '';
     final url = await FirebaseStorageService.uploadSaleCoverImage(
       imageFile: image,
       saleId: saleId,
+      userId: userId,
       onProgress: (p) {
         if (!mounted) return;
         setState(() {
@@ -831,10 +928,7 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cover photo updated!'),
-          backgroundColor: AppColors.success,
-        ),
+        const SnackBar(content: Text('Cover photo submitted for review. It will appear once approved.')),
       );
     }
   }

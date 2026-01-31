@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/auth_service.dart';
+import '../../services/profile_service.dart';
 import '../../theme/app_colors.dart';
 import '../home_screen.dart';
 
@@ -18,6 +19,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  DateTime? _dob;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
@@ -32,6 +34,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_dob == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: const Text('Please select your date of birth'), backgroundColor: AppColors.error),
+      );
+      return;
+    }
 
     final authService = context.read<AuthService>();
     final success = await authService.register(
@@ -41,6 +49,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
 
     if (success && mounted) {
+      // Persist DOB + display name to backend profile (required for 16+ compliance).
+      await context.read<ProfileService>().updateProfile(
+            displayName: _nameController.text.trim(),
+            dob: _dob,
+          );
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const HomeScreen()),
         (route) => false,
@@ -123,6 +136,39 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     }
                     return null;
                   },
+                ),
+
+                const SizedBox(height: 16),
+
+                // DOB field (16+)
+                InkWell(
+                  onTap: () async {
+                    final now = DateTime.now();
+                    final lastDate = DateTime(now.year - 16, now.month, now.day);
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _dob ?? DateTime(2000, 1, 1),
+                      firstDate: DateTime(1900, 1, 1),
+                      lastDate: lastDate,
+                      helpText: 'Select date of birth',
+                    );
+                    if (picked == null) return;
+                    setState(() {
+                      _dob = picked;
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Date of Birth',
+                      prefixIcon: Icon(Icons.cake_outlined),
+                    ),
+                    child: Text(
+                      _dob == null
+                          ? 'Select'
+                          : '${_dob!.month.toString().padLeft(2, '0')}/${_dob!.day.toString().padLeft(2, '0')}/${_dob!.year}',
+                    ),
+                  ),
                 ),
 
                 const SizedBox(height: 16),
