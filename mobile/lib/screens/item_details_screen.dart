@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../models/item.dart';
 import '../services/firebase_storage_service.dart';
 import '../services/sales_service.dart';
+import '../services/auth_service.dart';
 import '../theme/app_colors.dart';
 
 class ItemDetailsScreen extends StatefulWidget {
@@ -137,9 +138,11 @@ class _ItemDetailsScreenState extends State<ItemDetailsScreen> {
       _isSaving = true;
     });
 
+    final userId = context.read<AuthService>().currentUser?.id ?? '';
     final url = await FirebaseStorageService.uploadItemImage(
       imageFile: image,
       saleId: widget.saleId,
+      userId: userId,
       itemId: _item.id,
     );
 
@@ -162,11 +165,17 @@ class _ItemDetailsScreenState extends State<ItemDetailsScreen> {
       return;
     }
 
+    // We only get a pending storage path here. The server-side moderation worker will
+    // promote it to an approved download URL and the backend will return it on refresh.
     setState(() {
-      _imageUrls.add(url);
-      if (_imageUrls.length == 1) _pageIndex = 0;
       _isSaving = false;
     });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Image submitted for review. It will appear once approved.'),
+        backgroundColor: AppColors.primary,
+      ),
+    );
   }
 
   Future<void> _removeImageAt(int index) async {

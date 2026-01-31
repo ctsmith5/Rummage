@@ -8,7 +8,9 @@ import 'services/auth_service.dart';
 import 'services/sales_service.dart';
 import 'services/location_service.dart';
 import 'services/favorite_service.dart';
+import 'services/profile_service.dart';
 import 'screens/splash_screen.dart';
+import 'app_nav.dart';
 
 void main() async {
     WidgetsFlutterBinding.ensureInitialized();
@@ -45,8 +47,11 @@ class RummageApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => SalesService()),
         ChangeNotifierProvider(create: (_) => LocationService()),
         ChangeNotifierProvider(create: (_) => FavoriteService()),
+        ChangeNotifierProvider(create: (_) => ProfileService()),
       ],
       child: MaterialApp(
+        navigatorKey: appNavigatorKey,
+        scaffoldMessengerKey: appScaffoldMessengerKey,
         title: 'Rummage',
         debugShowCheckedModeBanner: false,
         // Automatically follow system theme setting

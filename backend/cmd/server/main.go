@@ -47,12 +47,22 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize MongoDB favorites service: %v", err)
 	}
+	profileService, err := services.NewMongoProfileService(ctx, cfg.MongoURI, cfg.MongoDB)
+	if err != nil {
+		log.Fatalf("Failed to initialize MongoDB profile service: %v", err)
+	}
+	accountService, err := services.NewMongoAccountService(ctx, cfg.MongoURI, cfg.MongoDB)
+	if err != nil {
+		log.Fatalf("Failed to initialize MongoDB account service: %v", err)
+	}
 	imageService := services.NewImageService(cfg.UploadDir)
 
 	// Initialize handlers
 	salesHandler := handlers.NewSalesHandler(salesService)
 	favoriteHandler := handlers.NewFavoriteHandler(favoriteService)
 	imageHandler := handlers.NewImageHandler(imageService, cfg.MaxUploadSizeMB)
+	profileHandler := handlers.NewProfileHandler(profileService, authClient)
+	accountHandler := handlers.NewAccountHandler(accountService)
 
 	// Create router
 	r := chi.NewRouter()
@@ -62,11 +72,14 @@ func main() {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
 	r.Use(cors.Handler(cors.Options{
+		// Browser note: you cannot use `Access-Control-Allow-Origin: *` together with
+		// `Access-Control-Allow-Credentials: true`. Since we auth via Bearer tokens
+		// (no cookies), keep credentials disabled so the API is callable from the web.
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Origin", "X-Requested-With", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
-		AllowCredentials: true,
+		AllowCredentials: false,
 		MaxAge:           300,
 	}))
 
@@ -112,6 +125,16 @@ func main() {
 			// Favorites list
 			r.Get("/favorites", favoriteHandler.ListFavorites)
 			r.Get("/favorites/sales", favoriteHandler.ListFavoriteSales)
+
+			// Profile / account
+			r.Route("/profile", func(r chi.Router) {
+				r.Get("/", profileHandler.GetProfile)
+				r.Get("/{userId}", profileHandler.GetPublicProfileByUserID)
+				r.Put("/", profileHandler.UpsertProfile)
+			})
+			r.Route("/account", func(r chi.Router) {
+				r.Delete("/", accountHandler.DeleteAccount)
+			})
 
 			// Image upload
 			r.Post("/upload", imageHandler.Upload)
