@@ -56,6 +56,8 @@ func main() {
 		log.Fatalf("Failed to initialize MongoDB account service: %v", err)
 	}
 	imageService := services.NewImageService(cfg.UploadDir)
+	recaptchaVerifier := services.NewRecaptchaVerifier(cfg.RecaptchaSecret)
+	sendGridMailer := services.NewSendGridMailer(cfg.SendGridAPIKey, cfg.SupportFromEmail, cfg.SupportToEmail)
 
 	// Initialize handlers
 	salesHandler := handlers.NewSalesHandler(salesService)
@@ -63,6 +65,7 @@ func main() {
 	imageHandler := handlers.NewImageHandler(imageService, cfg.MaxUploadSizeMB)
 	profileHandler := handlers.NewProfileHandler(profileService, authClient)
 	accountHandler := handlers.NewAccountHandler(accountService)
+	supportHandler := handlers.NewSupportHandler(recaptchaVerifier, sendGridMailer)
 
 	// Create router
 	r := chi.NewRouter()
@@ -91,6 +94,9 @@ func main() {
 
 	// API routes
 	r.Route("/api", func(r chi.Router) {
+		// Public routes (no Firebase auth). Intended for external website integrations.
+		r.Post("/support", supportHandler.SubmitSupportRequest)
+
 		// Protected routes
 		r.Group(func(r chi.Router) {
 			r.Use(appMiddleware.FirebaseAuth(authClient))
