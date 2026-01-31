@@ -1,0 +1,53 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuthed() {
+      return request.auth != null;
+    }
+
+    function isApproved() {
+      return resource.metadata.moderation == 'approved';
+    }
+
+    function isImageUpload() {
+      return request.resource != null
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Pending uploads (quarantine): only writable by the authenticated user that owns the upload.
+    // Pending is NEVER readable.
+    match /pending/sales/{saleId}/{allPaths=**} {
+      allow write: if isAuthed()
+        && isImageUpload()
+        && request.resource.metadata.userId == request.auth.uid
+        && request.resource.metadata.saleId == saleId
+        && (request.resource.metadata.type == 'sale_cover'
+          || request.resource.metadata.type == 'sale_item');
+      allow read: if false;
+    }
+
+    match /pending/users/{userId}/profile/{allPaths=**} {
+      allow write: if isAuthed()
+        && request.auth.uid == userId
+        && isImageUpload()
+        && request.resource.metadata.userId == userId
+        && request.resource.metadata.type == 'profile_photo';
+      allow read: if false;
+    }
+
+    // Approved sales images: readable only if moderation metadata is approved.
+    match /sales/{saleId}/{allPaths=**} {
+      allow read: if isApproved();
+      // Users should not write directly to approved paths; worker promotes from /pending.
+      allow write: if false;
+    }
+
+    // Approved profile photos: readable only if moderation metadata is approved.
+    match /users/{userId}/profile/{allPaths=**} {
+      allow read: if isApproved();
+      allow write: if false;
+    }
+  }
+}
+

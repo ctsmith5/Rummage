@@ -16,6 +16,7 @@ import (
 type contextKey string
 
 const UserIDKey contextKey = "userID"
+const UserEmailKey contextKey = "userEmail"
 
 type FirebaseAuthConfig struct {
 	// Optional. If provided, used to validate Firebase ID token audience/issuer.
@@ -78,8 +79,10 @@ func FirebaseAuth(authClient *fbauth.Client) func(http.Handler) http.Handler {
 			}
 
 			userID := token.UID
+			email, _ := token.Claims["email"].(string)
 
 			ctx := context.WithValue(r.Context(), UserIDKey, userID)
+			ctx = context.WithValue(ctx, UserEmailKey, email)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -92,6 +95,15 @@ func GetUserID(ctx context.Context) string {
 		return ""
 	}
 	return userID
+}
+
+// GetUserEmail extracts the authenticated user's email from context (if present).
+func GetUserEmail(ctx context.Context) string {
+	email, ok := ctx.Value(UserEmailKey).(string)
+	if !ok {
+		return ""
+	}
+	return email
 }
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {

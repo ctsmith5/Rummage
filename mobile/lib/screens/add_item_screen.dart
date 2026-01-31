@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 
 import '../models/item.dart';
+import '../services/auth_service.dart';
 import '../services/sales_service.dart';
 import '../services/firebase_storage_service.dart';
 import '../theme/app_colors.dart';
@@ -159,9 +160,11 @@ class _AddItemScreenState extends State<AddItemScreen> {
         _loadingMessage = 'Uploading image...';
       });
 
+      final userId = context.read<AuthService>().currentUser?.id ?? '';
       imageUrl = await FirebaseStorageService.uploadItemImage(
         imageFile: _selectedImage!,
         saleId: widget.saleId,
+        userId: userId,
         onProgress: (progress) {
           setState(() {
             _uploadProgress = progress;
