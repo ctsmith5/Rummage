@@ -16,8 +16,8 @@ import (
 var defaultDOB = time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
 
 type MongoProfileService struct {
-	client     *mongo.Client
-	db         *mongo.Database
+	client      *mongo.Client
+	db          *mongo.Database
 	profilesCol *mongo.Collection
 }
 

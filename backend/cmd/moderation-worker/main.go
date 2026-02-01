@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -243,4 +243,3 @@ func promoteObject(ctx context.Context, bucket string, from string, to string, o
 	// Delete pending object.
 	return src.Delete(ctx)
 }
-
