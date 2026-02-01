@@ -70,6 +70,15 @@ gcloud run services update rummage-backend \
   --region us-central1
 ```
 
+### Support form (external website)
+
+If you use the public `POST /api/support` endpoint, you must set:
+
+- `SENDGRID_API_KEY`: SendGrid API key
+- `SUPPORT_FROM_EMAIL`: a verified sender in SendGrid (required)
+- `SUPPORT_TO_EMAIL`: destination support inbox (defaults to `support@ludicrousapps.io`)
+- `RECAPTCHA_SECRET`: reCAPTCHA v2 secret for your website form
+
 Or use Secret Manager (more secure):
 ```bash
 # Create secret

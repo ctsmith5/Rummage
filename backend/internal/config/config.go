@@ -14,6 +14,12 @@ type Config struct {
 	MongoURI        string
 	MongoDB         string
 	MaxUploadSizeMB int64
+
+	// Support form (public endpoint)
+	SendGridAPIKey   string
+	SupportToEmail   string
+	SupportFromEmail string
+	RecaptchaSecret  string
 }
 
 func Load() *Config {
@@ -30,6 +36,11 @@ func Load() *Config {
 		MongoURI:        getEnv("MONGO_URI", ""),
 		MongoDB:         getEnv("MONGO_DB", "rummage"),
 		MaxUploadSizeMB: 10,
+
+		SendGridAPIKey:   getEnv("SENDGRID_API_KEY", ""),
+		SupportToEmail:   getEnv("SUPPORT_TO_EMAIL", "support@ludicrousapps.io"),
+		SupportFromEmail: getEnv("SUPPORT_FROM_EMAIL", ""),
+		RecaptchaSecret:  getEnv("RECAPTCHA_SECRET", ""),
 	}
 }
 
