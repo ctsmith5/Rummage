@@ -100,14 +100,10 @@ func handleFinalize(w http.ResponseWriter, r *http.Request) {
 	}
 	defer flagSvc.Close(ctx)
 
-	actions := &services.ModerationActions{Sales: salesSvc, Profiles: profSvc, Flags: flagSvc}
-
 	userID := ""
-	saleID := ""
 	typ := ""
 	if ev.Metadata != nil {
 		userID = ev.Metadata["userId"]
-		saleID = ev.Metadata["saleId"]
 		typ = ev.Metadata["type"]
 	}
 
