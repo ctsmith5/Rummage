@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"crypto/tls"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -15,8 +16,8 @@ import (
 var defaultDOB = time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
 
 type MongoProfileService struct {
-	client     *mongo.Client
-	db         *mongo.Database
+	client      *mongo.Client
+	db          *mongo.Database
 	profilesCol *mongo.Collection
 }
 
@@ -173,6 +174,31 @@ func (s *MongoProfileService) Upsert(ctx context.Context, userID string, email s
 		prof.UpdatedAt = now
 	}
 	return &prof, nil
+}
+
+// ApprovePendingProfilePhoto updates any profile whose photo_url currently equals pendingPath
+// to point at the final approved download URL.
+func (s *MongoProfileService) ApprovePendingProfilePhoto(ctx context.Context, pendingPath string, approvedURL string) error {
+	if strings.TrimSpace(pendingPath) == "" || strings.TrimSpace(approvedURL) == "" {
+		return nil
+	}
+	now := time.Now()
+	_, err := s.profilesCol.UpdateOne(ctx, bson.M{"photo_url": pendingPath}, bson.M{
+		"$set": bson.M{"photo_url": approvedURL, "updated_at": now},
+	})
+	return err
+}
+
+// RejectPendingProfilePhoto clears photo_url if it matches pendingPath.
+func (s *MongoProfileService) RejectPendingProfilePhoto(ctx context.Context, pendingPath string) error {
+	if strings.TrimSpace(pendingPath) == "" {
+		return nil
+	}
+	now := time.Now()
+	_, err := s.profilesCol.UpdateOne(ctx, bson.M{"photo_url": pendingPath}, bson.M{
+		"$set": bson.M{"photo_url": "", "updated_at": now},
+	})
+	return err
 }
 
 // ClearPhotoIfMatches clears photo_url if it matches the provided URL.

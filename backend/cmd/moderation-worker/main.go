@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -100,14 +100,10 @@ func handleFinalize(w http.ResponseWriter, r *http.Request) {
 	}
 	defer flagSvc.Close(ctx)
 
-	actions := &services.ModerationActions{Sales: salesSvc, Profiles: profSvc, Flags: flagSvc}
-
 	userID := ""
-	saleID := ""
 	typ := ""
 	if ev.Metadata != nil {
 		userID = ev.Metadata["userId"]
-		saleID = ev.Metadata["saleId"]
 		typ = ev.Metadata["type"]
 	}
 
@@ -247,4 +243,3 @@ func promoteObject(ctx context.Context, bucket string, from string, to string, o
 	// Delete pending object.
 	return src.Delete(ctx)
 }
-
