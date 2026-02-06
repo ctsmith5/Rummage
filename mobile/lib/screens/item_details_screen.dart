@@ -134,6 +134,8 @@ class _ItemDetailsScreenState extends State<ItemDetailsScreen> {
   }
 
   Future<void> _uploadNewImage(XFile image) async {
+    final salesService = context.read<SalesService>();
+
     setState(() {
       _isSaving = true;
     });
@@ -165,17 +167,48 @@ class _ItemDetailsScreenState extends State<ItemDetailsScreen> {
       return;
     }
 
-    // We only get a pending storage path here. The server-side moderation worker will
-    // promote it to an approved download URL and the backend will return it on refresh.
+    // Call updateItem so the backend can moderate and persist the new image.
+    final newUrls = [..._imageUrls, url];
+    final req = CreateItemRequest(
+      name: _nameController.text.trim(),
+      description: _descriptionController.text.trim(),
+      price: double.tryParse(_priceController.text.trim()) ?? 0,
+      imageUrls: newUrls,
+      category: _category,
+    );
+
+    final updated = await salesService.updateItem(widget.saleId, _item.id, req);
+
+    if (!mounted) return;
+
     setState(() {
       _isSaving = false;
+      if (updated != null) {
+        _item = updated;
+        _imageUrls = List<String>.from(updated.imageUrls);
+      }
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Image submitted for review. It will appear once approved.'),
-        backgroundColor: AppColors.primary,
-      ),
-    );
+
+    if (updated == null) {
+      final errorMsg = salesService.error ?? 'Failed to save image.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            errorMsg.toLowerCase().contains('rejected')
+                ? 'Photo rejected — violates community guidelines'
+                : errorMsg,
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Image added!'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    }
   }
 
   Future<void> _removeImageAt(int index) async {

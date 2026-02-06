@@ -143,13 +143,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (!mounted) return;
     setState(() => _saving = false);
     if (!ok) {
+      final errorMsg = context.read<ProfileService>().error ?? '';
+      final isRejected = errorMsg.toLowerCase().contains('rejected');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to save profile photo')),
+        SnackBar(content: Text(isRejected
+            ? 'Photo rejected — violates community guidelines'
+            : 'Failed to save profile photo')),
       );
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Profile photo submitted for review. It will appear once approved.')),
+      const SnackBar(content: Text('Profile photo updated!')),
     );
     final p = context.read<ProfileService>().profile;
     if (p != null) {

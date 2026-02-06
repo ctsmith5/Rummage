@@ -920,15 +920,20 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
     });
 
     if (updated == null) {
+      final errorMsg = context.read<SalesService>().error ?? 'Failed to save cover photo.';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(context.read<SalesService>().error ?? 'Failed to save cover photo.'),
+          content: Text(
+            errorMsg.toLowerCase().contains('rejected')
+                ? 'Photo rejected — violates community guidelines'
+                : errorMsg,
+          ),
           backgroundColor: AppColors.error,
         ),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cover photo submitted for review. It will appear once approved.')),
+        const SnackBar(content: Text('Cover photo updated!')),
       );
     }
   }

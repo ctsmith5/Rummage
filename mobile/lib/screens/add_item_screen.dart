@@ -187,7 +187,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
     }
 
     setState(() {
-      _loadingMessage = 'Creating item...';
+      _loadingMessage = 'Checking image...';
     });
 
     final request = CreateItemRequest(
@@ -217,9 +217,14 @@ class _AddItemScreenState extends State<AddItemScreen> {
       // Return `true` so the Sale Details screen can refresh immediately.
       Navigator.of(context).pop(true);
     } else if (mounted) {
+      final errorMsg = salesService.error ?? 'Failed to add item. Please try again.';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to add item. Please try again.'),
+        SnackBar(
+          content: Text(
+            errorMsg.toLowerCase().contains('rejected')
+                ? 'Photo rejected — violates community guidelines'
+                : errorMsg,
+          ),
           backgroundColor: AppColors.error,
         ),
       );
