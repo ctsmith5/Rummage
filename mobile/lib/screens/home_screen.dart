@@ -41,7 +41,11 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadData();
+    // Defer data loading until after build to avoid notifyListeners during build phase
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadData();
+    });
     _searchFocusNode.addListener(() {
       if (!mounted) return;
       // Reveal radius slider when user is interacting with search.

@@ -75,7 +75,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _pickDob() async {
-    final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
       initialDate: _dob ?? DateTime(1970, 1, 1),
@@ -204,12 +203,69 @@ class _ProfileScreenState extends State<ProfileScreen> {
     bool obscureNew = true;
     bool obscureConfirm = true;
 
+    // Error state variables - using a Map so we can modify from _changePassword
+    final errors = <String, String?>{
+      'current': null,
+      'new': null,
+      'confirm': null,
+    };
+
     return showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            // Real-time validation logic
+            void validateFields() {
+              setDialogState(() {
+                // Clear previous errors
+                errors['current'] = null;
+                errors['new'] = null;
+                errors['confirm'] = null;
+
+                final current = currentPasswordController.text;
+                final newPwd = newPasswordController.text;
+                final confirm = confirmPasswordController.text;
+
+                // Validate new password length (only if user has typed something)
+                if (newPwd.isNotEmpty && newPwd.length < 8) {
+                  errors['new'] = 'At least 8 characters required';
+                }
+
+                // Validate password match (only if user has typed in confirm field)
+                if (confirm.isNotEmpty && newPwd != confirm) {
+                  errors['confirm'] = 'Passwords do not match';
+                }
+
+                // Validate new password is different from current (only if both are filled)
+                if (current.isNotEmpty && newPwd.isNotEmpty && current == newPwd) {
+                  errors['new'] = 'Must be different from current password';
+                }
+              });
+            }
+
+            // Computed validation state
+            bool isValid() {
+              final current = currentPasswordController.text;
+              final newPwd = newPasswordController.text;
+              final confirm = confirmPasswordController.text;
+
+              // All fields must have content
+              if (current.isEmpty || newPwd.isEmpty || confirm.isEmpty) return false;
+
+              // New password must be at least 8 chars
+              if (newPwd.length < 8) return false;
+
+              // Passwords must match
+              if (newPwd != confirm) return false;
+
+              // New password must be different
+              if (current == newPwd) return false;
+
+              return true;
+            }
+
             return AlertDialog(
               title: const Text('Change Password'),
               content: SingleChildScrollView(
@@ -222,6 +278,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       decoration: InputDecoration(
                         labelText: 'Current password',
                         prefixIcon: const Icon(Icons.lock_outline),
+                        errorText: errors['current'],
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                        ),
                         suffixIcon: IconButton(
                           icon: Icon(
                             obscureCurrent
@@ -237,6 +306,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       obscureText: obscureCurrent,
                       textInputAction: TextInputAction.next,
+                      onChanged: (_) => validateFields(),
                     ),
                     const SizedBox(height: 16),
 
@@ -245,8 +315,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       controller: newPasswordController,
                       decoration: InputDecoration(
                         labelText: 'New password',
-                        helperText: 'At least 6 characters',
+                        helperText: 'At least 8 characters',
+                        errorText: errors['new'],
                         prefixIcon: const Icon(Icons.lock_outline),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                        ),
                         suffixIcon: IconButton(
                           icon: Icon(
                             obscureNew
@@ -262,6 +345,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       obscureText: obscureNew,
                       textInputAction: TextInputAction.next,
+                      onChanged: (_) => validateFields(),
                     ),
                     const SizedBox(height: 16),
 
@@ -270,7 +354,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       controller: confirmPasswordController,
                       decoration: InputDecoration(
                         labelText: 'Confirm new password',
+                        errorText: errors['confirm'],
                         prefixIcon: const Icon(Icons.lock_outline),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                        ),
                         suffixIcon: IconButton(
                           icon: Icon(
                             obscureConfirm
@@ -286,6 +383,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       obscureText: obscureConfirm,
                       textInputAction: TextInputAction.done,
+                      onChanged: (_) => validateFields(),
                     ),
                   ],
                 ),
@@ -293,25 +391,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
               actions: [
                 TextButton(
                   onPressed: () {
-                    currentPasswordController.dispose();
-                    newPasswordController.dispose();
-                    confirmPasswordController.dispose();
                     Navigator.of(dialogContext).pop();
                   },
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  onPressed: () async {
-                    await _changePassword(
-                      dialogContext,
-                      currentPasswordController.text,
-                      newPasswordController.text,
-                      confirmPasswordController.text,
-                    );
-                    currentPasswordController.dispose();
-                    newPasswordController.dispose();
-                    confirmPasswordController.dispose();
-                  },
+                  onPressed: isValid()
+                      ? () async {
+                          await _changePassword(
+                            dialogContext,
+                            setDialogState,
+                            errors,
+                            currentPasswordController.text,
+                            newPasswordController.text,
+                            confirmPasswordController.text,
+                          );
+                        }
+                      : null,
                   child: const Text('Change Password'),
                 ),
               ],
@@ -319,73 +415,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
           },
         );
       },
-    );
+    ).then((_) {
+      // Defer controller disposal until after dialog is fully disposed
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        currentPasswordController.dispose();
+        newPasswordController.dispose();
+        confirmPasswordController.dispose();
+      });
+    });
   }
 
   Future<void> _changePassword(
     BuildContext dialogContext,
+    StateSetter setDialogState,
+    Map<String, String?> errors,
     String currentPassword,
     String newPassword,
     String confirmPassword,
   ) async {
-    // Validation
-    if (currentPassword.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter your current password'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (newPassword.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a new password'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Password must be at least 6 characters'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (newPassword != confirmPassword) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('New passwords do not match'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (currentPassword == newPassword) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('New password must be different from current password'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
     try {
       final user = fb.FirebaseAuth.instance.currentUser;
       if (user == null || user.email == null) {
         throw Exception('Not authenticated');
       }
 
-      // Step 1: Re-authenticate with current password (required by Firebase)
+      // Step 1: Re-authenticate with current password
       final credential = fb.EmailAuthProvider.credential(
         email: user.email!,
         password: currentPassword,
@@ -398,40 +452,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (!mounted) return;
 
-      // Close dialog
+      // Close dialog on success
       Navigator.of(dialogContext).pop();
 
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Password changed successfully'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      // FIXED: Schedule SnackBar for next frame to avoid disposal race condition
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Password changed successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      });
     } on fb.FirebaseAuthException catch (e) {
       if (!mounted) return;
 
-      String errorMessage;
-      switch (e.code) {
-        case 'wrong-password':
-          errorMessage = 'Current password is incorrect';
-          break;
-        case 'weak-password':
-          errorMessage = 'New password is too weak';
-          break;
-        case 'requires-recent-login':
-          errorMessage = 'Please log out and log back in before changing password';
-          break;
-        default:
-          errorMessage = 'Failed to change password: ${e.message ?? 'Unknown error'}';
-      }
+      // Show inline error for wrong password - keep dialog open
+      if (e.code == 'wrong-password') {
+        setDialogState(() {
+          errors['current'] = 'Incorrect existing password';
+        });
+      } else {
+        // For other Firebase errors, still use SnackBar (rare cases)
+        String errorMessage;
+        switch (e.code) {
+          case 'weak-password':
+            errorMessage = 'New password is too weak';
+            break;
+          case 'requires-recent-login':
+            errorMessage = 'Please log out and log back in before changing password';
+            break;
+          default:
+            errorMessage = 'Failed to change password: ${e.message ?? 'Unknown error'}';
+        }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMessage),
-          backgroundColor: Colors.red,
-        ),
-      );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
 
