@@ -113,7 +113,7 @@ class ApiClient {
         uri,
         headers: headers,
         body: body != null ? jsonEncode(body) : null,
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'POST', endpoint);
     } catch (e, stackTrace) {
       _log('POST $endpoint failed', error: e, stackTrace: stackTrace);
@@ -141,7 +141,7 @@ class ApiClient {
         uri,
         headers: headers,
         body: body != null ? jsonEncode(body) : null,
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'PUT', endpoint);
     } catch (e, stackTrace) {
       _log('PUT $endpoint failed', error: e, stackTrace: stackTrace);

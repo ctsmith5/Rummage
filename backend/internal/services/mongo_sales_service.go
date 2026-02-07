@@ -35,7 +35,6 @@ type mongoSaleDoc struct {
 	Description    string        `bson:"description"`
 	Address        string        `bson:"address"`
 	SaleCoverPhoto string        `bson:"sale_cover_photo,omitempty"`
-	PendingCover   string        `bson:"pending_sale_cover_path,omitempty"`
 	Latitude       float64       `bson:"latitude"`
 	Longitude      float64       `bson:"longitude"`
 	StartDate      time.Time     `bson:"start_date"`
@@ -52,7 +51,6 @@ type mongoItemDoc struct {
 	Description    string    `bson:"description"`
 	Price          float64   `bson:"price"`
 	ImageURLs      []string  `bson:"image_urls,omitempty"`
-	PendingImagePaths []string `bson:"pending_image_paths,omitempty"`
 	LegacyImageURL string    `bson:"image_url,omitempty"`
 	Category       string    `bson:"category"`
 	CreatedAt      time.Time `bson:"created_at"`
@@ -155,7 +153,6 @@ func (s *MongoSalesService) Create(userID string, req *models.CreateSaleRequest)
 		Description:    req.Description,
 		Address:        req.Address,
 		SaleCoverPhoto: "",
-		PendingCover:   "",
 		Latitude:       req.Latitude,
 		Longitude:      req.Longitude,
 		StartDate:      req.StartDate,
@@ -254,21 +251,12 @@ func (s *MongoSalesService) SetSaleCoverPhoto(userID, saleID, coverURL string) (
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	set := bson.M{}
-	if strings.HasPrefix(coverURL, "pending/") {
-		set["pending_sale_cover_path"] = coverURL
-		set["sale_cover_photo"] = ""
-	} else {
-		set["sale_cover_photo"] = coverURL
-		set["pending_sale_cover_path"] = ""
-	}
-
 	update := bson.M{
 		"$set": bson.M{
-			// overwritten below
+			"sale_cover_photo":        coverURL,
+			"pending_sale_cover_path": "",
 		},
 	}
-	update["$set"] = set
 
 	res := s.salesColl.FindOneAndUpdate(
 		ctx,
@@ -301,28 +289,6 @@ func (s *MongoSalesService) SetSaleCoverPhoto(userID, saleID, coverURL string) (
 	return m, nil
 }
 
-// ApprovePendingSaleCover promotes a pending cover reference to an approved URL.
-func (s *MongoSalesService) ApprovePendingSaleCover(ctx context.Context, pendingPath string, approvedURL string) error {
-	if pendingPath == "" || approvedURL == "" {
-		return nil
-	}
-	_, err := s.salesColl.UpdateOne(ctx, bson.M{"pending_sale_cover_path": pendingPath}, bson.M{
-		"$set": bson.M{"sale_cover_photo": approvedURL, "pending_sale_cover_path": ""},
-	})
-	return err
-}
-
-// RejectPendingSaleCover clears any pending cover reference that matches the path.
-func (s *MongoSalesService) RejectPendingSaleCover(ctx context.Context, pendingPath string) error {
-	if pendingPath == "" {
-		return nil
-	}
-	_, err := s.salesColl.UpdateOne(ctx, bson.M{"pending_sale_cover_path": pendingPath}, bson.M{
-		"$set": bson.M{"pending_sale_cover_path": "", "sale_cover_photo": ""},
-	})
-	return err
-}
-
 func (s *MongoSalesService) Delete(userID, saleID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -346,37 +312,6 @@ func (s *MongoSalesService) Delete(userID, saleID string) error {
 		return err
 	}
 	return nil
-}
-
-// ClearSaleCoverIfMatches clears sale_cover_photo if it matches the provided URL.
-func (s *MongoSalesService) ClearSaleCoverIfMatches(ctx context.Context, saleID string, url string) error {
-	if saleID == "" || url == "" {
-		return nil
-	}
-	_, err := s.salesColl.UpdateOne(ctx, bson.M{"_id": saleID, "sale_cover_photo": url}, bson.M{
-		"$set": bson.M{"sale_cover_photo": ""},
-	})
-	return err
-}
-
-// RemoveItemImageIfMatches removes the given URL from any items belonging to the sale.
-// Also clears legacy image_url if it matches.
-func (s *MongoSalesService) RemoveItemImageIfMatches(ctx context.Context, saleID string, url string) error {
-	if saleID == "" || url == "" {
-		return nil
-	}
-	// Pull from image_urls array.
-	_, err := s.itemsColl.UpdateMany(ctx, bson.M{"sale_id": saleID}, bson.M{
-		"$pull": bson.M{"image_urls": url},
-	})
-	if err != nil {
-		return err
-	}
-	// Clear legacy image_url if it matches.
-	_, err = s.itemsColl.UpdateMany(ctx, bson.M{"sale_id": saleID, "image_url": url}, bson.M{
-		"$set": bson.M{"image_url": ""},
-	})
-	return err
 }
 
 func (s *MongoSalesService) StartSale(userID, saleID string) (*models.GarageSale, error) {
@@ -704,25 +639,15 @@ func (s *MongoSalesService) AddItem(userID, saleID string, req *models.CreateIte
 
 	id := uuid.New().String()
 	now := time.Now().UTC()
-	approved := []string{}
-	pending := []string{}
-	for _, u := range req.ImageURLs {
-		if strings.HasPrefix(u, "pending/") {
-			pending = append(pending, u)
-		} else if strings.TrimSpace(u) != "" {
-			approved = append(approved, u)
-		}
-	}
 	doc := mongoItemDoc{
-		ID:          id,
-		SaleID:      saleID,
-		Name:        req.Name,
-		Description: req.Description,
-		Price:       req.Price,
-		ImageURLs:   approved,
-		PendingImagePaths: pending,
-		Category:    req.Category,
-		CreatedAt:   now,
+		ID:                id,
+		SaleID:            saleID,
+		Name:              req.Name,
+		Description:       req.Description,
+		Price:             req.Price,
+		ImageURLs:         req.ImageURLs,
+		Category:          req.Category,
+		CreatedAt:         now,
 	}
 
 	if _, err := s.itemsColl.InsertOne(ctx, doc); err != nil {
@@ -748,24 +673,13 @@ func (s *MongoSalesService) UpdateItem(userID, saleID, itemID string, req *model
 		return nil, ErrUnauthorized
 	}
 
-	approved := []string{}
-	pending := []string{}
-	for _, u := range req.ImageURLs {
-		if strings.HasPrefix(u, "pending/") {
-			pending = append(pending, u)
-		} else if strings.TrimSpace(u) != "" {
-			approved = append(approved, u)
-		}
-	}
-
 	update := bson.M{
 		"$set": bson.M{
-			"name":        req.Name,
-			"description": req.Description,
-			"price":       req.Price,
-			"category":    req.Category,
-			"image_urls":  approved,
-			"pending_image_paths": pending,
+			"name":                req.Name,
+			"description":        req.Description,
+			"price":              req.Price,
+			"category":           req.Category,
+			"image_urls":         req.ImageURLs,
 		},
 	}
 
@@ -785,29 +699,6 @@ func (s *MongoSalesService) UpdateItem(userID, saleID, itemID string, req *model
 	}
 
 	return itemDocToModel(updated), nil
-}
-
-// ApprovePendingItemImage moves a pending image ref into image_urls for the item that contains it.
-func (s *MongoSalesService) ApprovePendingItemImage(ctx context.Context, pendingPath string, approvedURL string) error {
-	if pendingPath == "" || approvedURL == "" {
-		return nil
-	}
-	_, err := s.itemsColl.UpdateOne(ctx, bson.M{"pending_image_paths": pendingPath}, bson.M{
-		"$pull": bson.M{"pending_image_paths": pendingPath},
-		"$addToSet": bson.M{"image_urls": approvedURL},
-	})
-	return err
-}
-
-// RejectPendingItemImage removes a pending image ref from any item that contains it.
-func (s *MongoSalesService) RejectPendingItemImage(ctx context.Context, pendingPath string) error {
-	if pendingPath == "" {
-		return nil
-	}
-	_, err := s.itemsColl.UpdateOne(ctx, bson.M{"pending_image_paths": pendingPath}, bson.M{
-		"$pull": bson.M{"pending_image_paths": pendingPath},
-	})
-	return err
 }
 
 func (s *MongoSalesService) DeleteItem(userID, saleID, itemID string) error {

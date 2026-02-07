@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	fbauth "firebase.google.com/go/v4/auth"
@@ -16,12 +17,13 @@ import (
 )
 
 type ProfileHandler struct {
-	profiles   *services.MongoProfileService
-	authClient *fbauth.Client
+	profiles          *services.MongoProfileService
+	authClient        *fbauth.Client
+	moderationService *services.ModerationService
 }
 
-func NewProfileHandler(profiles *services.MongoProfileService, authClient *fbauth.Client) *ProfileHandler {
-	return &ProfileHandler{profiles: profiles, authClient: authClient}
+func NewProfileHandler(profiles *services.MongoProfileService, authClient *fbauth.Client, moderationService *services.ModerationService) *ProfileHandler {
+	return &ProfileHandler{profiles: profiles, authClient: authClient, moderationService: moderationService}
 }
 
 func (h *ProfileHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
@@ -72,6 +74,20 @@ func (h *ProfileHandler) UpsertProfile(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, models.NewErrorResponse("User must be 16 years old or older"))
 			return
 		}
+	}
+
+	if h.moderationService != nil && req.PhotoURL != nil && strings.HasPrefix(*req.PhotoURL, "pending/") {
+		res, mErr := h.moderationService.ModerateAndPromote(r.Context(), *req.PhotoURL, userID)
+		if mErr != nil {
+			if mErr == services.ErrImageRejected {
+				writeJSON(w, http.StatusUnprocessableEntity, models.NewErrorResponse("Photo rejected — violates community guidelines"))
+				return
+			}
+			log.Printf("[UpsertProfile] moderation error: %v", mErr)
+			writeJSON(w, http.StatusInternalServerError, models.NewErrorResponse("Failed to process image"))
+			return
+		}
+		req.PhotoURL = &res.ApprovedURL
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)

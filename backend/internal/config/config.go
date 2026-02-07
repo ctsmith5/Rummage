@@ -15,6 +15,9 @@ type Config struct {
 	MongoDB         string
 	MaxUploadSizeMB int64
 
+	// Firebase Storage bucket for moderation (e.g. "rummage-31244.firebasestorage.app").
+	FirebaseBucket string
+
 	// Support form (public endpoint)
 	SendGridAPIKey   string
 	SupportToEmail   string
@@ -36,6 +39,8 @@ func Load() *Config {
 		MongoURI:        getEnv("MONGO_URI", ""),
 		MongoDB:         getEnv("MONGO_DB", "rummage"),
 		MaxUploadSizeMB: 10,
+
+		FirebaseBucket: getEnv("FIREBASE_BUCKET", ""),
 
 		SendGridAPIKey:   getEnv("SENDGRID_API_KEY", ""),
 		SupportToEmail:   getEnv("SUPPORT_TO_EMAIL", "support@ludicrousapps.io"),

@@ -53,7 +53,7 @@ class ProfileService extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _error = 'Failed to update profile';
+      _error = e is ApiException ? e.message : 'Failed to update profile';
       _isLoading = false;
       notifyListeners();
       return false;
