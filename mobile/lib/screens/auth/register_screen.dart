@@ -22,6 +22,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   DateTime? _dob;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _isRegistering = false;
 
   @override
   void dispose() {
@@ -41,6 +42,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
+    setState(() {
+      _isRegistering = true;
+    });
+
     final authService = context.read<AuthService>();
     final success = await authService.register(
       _emailController.text.trim(),
@@ -59,7 +64,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
         MaterialPageRoute(builder: (_) => const VerifyEmailScreen()),
         (route) => false,
       );
+      // No need to reset _isRegistering - widget is unmounted after navigation
     } else if (mounted) {
+      setState(() {
+        _isRegistering = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(authService.error ?? 'Registration failed'),
@@ -247,8 +256,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 Consumer<AuthService>(
                   builder: (context, authService, _) {
                     return ElevatedButton(
-                      onPressed: authService.isLoading ? null : _register,
-                      child: authService.isLoading
+                      onPressed: _isRegistering ? null : _register,
+                      child: _isRegistering
                           ? const SizedBox(
                               height: 20,
                               width: 20,

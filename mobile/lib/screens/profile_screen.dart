@@ -12,7 +12,6 @@ import '../services/firebase_storage_service.dart';
 import '../services/profile_service.dart';
 import '../theme/app_colors.dart';
 import 'auth/login_screen.dart';
-import 'confirm_delete_account_screen.dart';
 import 'deleting_account_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -75,7 +74,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _pickDob() async {
-    final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
       initialDate: _dob ?? DateTime(1970, 1, 1),
@@ -196,30 +194,351 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Future<void> _deleteAccount() async {
-    // Confirm using a full-screen route (not dialogs) to avoid Overlay teardown races.
-    final nav = appNavigatorKey.currentState;
-    if (nav == null) return;
-    final proceed = await nav.push<bool>(
-          MaterialPageRoute(builder: (_) => const ConfirmDeleteAccountScreen()),
-        ) ??
-        false;
-    if (!proceed) return;
+  Future<void> _showChangePasswordDialog() async {
+    final currentPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    bool obscureCurrent = true;
+    bool obscureNew = true;
+    bool obscureConfirm = true;
 
-    // Move to a dedicated screen via the ROOT navigator so we don't depend on a context
-    // that is being disposed (prevents Overlay/_Theater GlobalKey teardown errors).
+    // Error state variables - using a Map so we can modify from _changePassword
+    final errors = <String, String?>{
+      'current': null,
+      'new': null,
+      'confirm': null,
+    };
+
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            // Real-time validation logic
+            void validateFields() {
+              setDialogState(() {
+                // Clear previous errors
+                errors['current'] = null;
+                errors['new'] = null;
+                errors['confirm'] = null;
+
+                final current = currentPasswordController.text;
+                final newPwd = newPasswordController.text;
+                final confirm = confirmPasswordController.text;
+
+                // Validate new password length (only if user has typed something)
+                if (newPwd.isNotEmpty && newPwd.length < 8) {
+                  errors['new'] = 'At least 8 characters required';
+                }
+
+                // Validate password match (only if user has typed in confirm field)
+                if (confirm.isNotEmpty && newPwd != confirm) {
+                  errors['confirm'] = 'Passwords do not match';
+                }
+
+                // Validate new password is different from current (only if both are filled)
+                if (current.isNotEmpty && newPwd.isNotEmpty && current == newPwd) {
+                  errors['new'] = 'Must be different from current password';
+                }
+              });
+            }
+
+            // Computed validation state
+            bool isValid() {
+              final current = currentPasswordController.text;
+              final newPwd = newPasswordController.text;
+              final confirm = confirmPasswordController.text;
+
+              // All fields must have content
+              if (current.isEmpty || newPwd.isEmpty || confirm.isEmpty) return false;
+
+              // New password must be at least 8 chars
+              if (newPwd.length < 8) return false;
+
+              // Passwords must match
+              if (newPwd != confirm) return false;
+
+              // New password must be different
+              if (current == newPwd) return false;
+
+              return true;
+            }
+
+            return AlertDialog(
+              title: const Text('Change Password'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Current password field
+                    TextField(
+                      controller: currentPasswordController,
+                      decoration: InputDecoration(
+                        labelText: 'Current password',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        errorText: errors['current'],
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            obscureCurrent
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setDialogState(() {
+                              obscureCurrent = !obscureCurrent;
+                            });
+                          },
+                        ),
+                      ),
+                      obscureText: obscureCurrent,
+                      textInputAction: TextInputAction.next,
+                      onChanged: (_) => validateFields(),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // New password field
+                    TextField(
+                      controller: newPasswordController,
+                      decoration: InputDecoration(
+                        labelText: 'New password',
+                        helperText: 'At least 8 characters',
+                        errorText: errors['new'],
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            obscureNew
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setDialogState(() {
+                              obscureNew = !obscureNew;
+                            });
+                          },
+                        ),
+                      ),
+                      obscureText: obscureNew,
+                      textInputAction: TextInputAction.next,
+                      onChanged: (_) => validateFields(),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Confirm password field
+                    TextField(
+                      controller: confirmPasswordController,
+                      decoration: InputDecoration(
+                        labelText: 'Confirm new password',
+                        errorText: errors['confirm'],
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            obscureConfirm
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setDialogState(() {
+                              obscureConfirm = !obscureConfirm;
+                            });
+                          },
+                        ),
+                      ),
+                      obscureText: obscureConfirm,
+                      textInputAction: TextInputAction.done,
+                      onChanged: (_) => validateFields(),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isValid()
+                      ? () async {
+                          await _changePassword(
+                            dialogContext,
+                            setDialogState,
+                            errors,
+                            currentPasswordController.text,
+                            newPasswordController.text,
+                            confirmPasswordController.text,
+                          );
+                        }
+                      : null,
+                  child: const Text('Change Password'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    ).then((_) {
+      // Defer controller disposal until after dialog is fully disposed
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        currentPasswordController.dispose();
+        newPasswordController.dispose();
+        confirmPasswordController.dispose();
+      });
+    });
+  }
+
+  Future<void> _changePassword(
+    BuildContext dialogContext,
+    StateSetter setDialogState,
+    Map<String, String?> errors,
+    String currentPassword,
+    String newPassword,
+    String confirmPassword,
+  ) async {
+    try {
+      final user = fb.FirebaseAuth.instance.currentUser;
+      if (user == null || user.email == null) {
+        throw Exception('Not authenticated');
+      }
+
+      // Step 1: Re-authenticate with current password
+      final credential = fb.EmailAuthProvider.credential(
+        email: user.email!,
+        password: currentPassword,
+      );
+
+      await user.reauthenticateWithCredential(credential);
+
+      // Step 2: Update password
+      await user.updatePassword(newPassword);
+
+      if (!mounted) return;
+
+      // Close dialog on success
+      Navigator.of(dialogContext).pop();
+
+      // FIXED: Schedule SnackBar for next frame to avoid disposal race condition
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Password changed successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      });
+    } on fb.FirebaseAuthException catch (e) {
+      if (!mounted) return;
+
+      // Show inline error for wrong password - keep dialog open
+      if (e.code == 'wrong-password') {
+        setDialogState(() {
+          errors['current'] = 'Incorrect existing password';
+        });
+      } else {
+        // For other Firebase errors, still use SnackBar (rare cases)
+        String errorMessage;
+        switch (e.code) {
+          case 'weak-password':
+            errorMessage = 'New password is too weak';
+            break;
+          case 'requires-recent-login':
+            errorMessage = 'Please log out and log back in before changing password';
+            break;
+          default:
+            errorMessage = 'Failed to change password: ${e.message ?? 'Unknown error'}';
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to change password. Please try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteAccount() async {
+    // Show password confirmation dialog
+    final password = await _showPasswordConfirmDialog();
+    if (password == null) return; // User cancelled
+
+    if (!mounted) return;
+
+    // Wait for dialog overlay to fully dismiss to avoid GlobalKey conflicts
+    await Future.delayed(const Duration(milliseconds: 100));
+
     if (!mounted) return;
     setState(() => _deleting = true);
     FocusScope.of(context).unfocus();
     appScaffoldMessengerKey.currentState?.clearSnackBars();
 
+    final nav = appNavigatorKey.currentState;
+    if (nav == null) return;
+
+    // Navigate directly to deletion screen with password
     nav.pushAndRemoveUntil(
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const DeletingAccountScreen(),
+        pageBuilder: (_, __, ___) => DeletingAccountScreen(password: password),
         transitionDuration: Duration.zero,
         reverseTransitionDuration: Duration.zero,
       ),
       (route) => false,
+    );
+  }
+
+  Future<String?> _showPasswordConfirmDialog() async {
+    return showDialog<String?>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const _PasswordConfirmDialog(),
     );
   }
 
@@ -345,6 +664,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
 
               const SizedBox(height: 12),
+
+              // Change password button
+              OutlinedButton.icon(
+                onPressed: _saving ? null : _showChangePasswordDialog,
+                icon: const Icon(Icons.lock_outline),
+                label: const Text('Change password'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                ),
+              ),
+
+              const SizedBox(height: 12),
               OutlinedButton(
                 onPressed: _saving
                     ? null
@@ -400,6 +731,72 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Dialog for confirming account deletion with password input.
+/// Uses StatefulWidget so the TextEditingController is properly disposed
+/// after the dialog animation completes.
+class _PasswordConfirmDialog extends StatefulWidget {
+  const _PasswordConfirmDialog();
+
+  @override
+  State<_PasswordConfirmDialog> createState() => _PasswordConfirmDialogState();
+}
+
+class _PasswordConfirmDialogState extends State<_PasswordConfirmDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Delete account'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'This will permanently delete your account and all sales you created.',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Text('This cannot be undone.'),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _controller,
+            obscureText: true,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Enter your password to confirm',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(null),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.error,
+          ),
+          onPressed: () {
+            final password = _controller.text.trim();
+            if (password.isEmpty) return;
+            Navigator.of(context).pop(password);
+          },
+          child: const Text('Delete account'),
+        ),
+      ],
     );
   }
 }

@@ -100,6 +100,43 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Sends a password reset email to the provided email address.
+  /// Returns true if email was sent successfully, false otherwise.
+  /// Sets [error] property on failure.
+  Future<bool> sendPasswordReset(String email) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      await _auth.sendPasswordResetEmail(email: email);
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } on fb.FirebaseAuthException catch (e) {
+      String errorMessage;
+      switch (e.code) {
+        case 'invalid-email':
+          errorMessage = 'Invalid email address';
+          break;
+        case 'user-not-found':
+          errorMessage = 'No account found with this email';
+          break;
+        default:
+          errorMessage = 'Failed to send password reset email. Please try again.';
+      }
+      _error = errorMessage;
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _error = 'Failed to send password reset email. Please try again.';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
   Future<bool> sendEmailVerification() async {
     try {
       await _auth.currentUser?.sendEmailVerification();

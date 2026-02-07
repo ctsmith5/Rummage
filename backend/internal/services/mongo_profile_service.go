@@ -142,11 +142,9 @@ func (s *MongoProfileService) Upsert(ctx context.Context, userID string, email s
 	setOnInsert := bson.M{
 		"user_id": userID,
 	}
-	if email != "" {
-		setOnInsert["email"] = email
-	}
 	// IMPORTANT: MongoDB forbids updating the same path in both $set and $setOnInsert.
 	// Only provide a default DOB on insert when the caller is NOT explicitly setting DOB.
+	// Email is always set via $set to stay in sync with Firebase Auth.
 	if req.DOB == nil {
 		setOnInsert["dob"] = defaultDOB
 	}
