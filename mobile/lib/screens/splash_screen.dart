@@ -7,6 +7,7 @@ import '../services/auth_service.dart';
 import '../theme/app_colors.dart';
 import 'home_screen.dart';
 import 'auth/login_screen.dart';
+import 'auth/verify_email_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -59,13 +60,26 @@ class _SplashScreenState extends State<SplashScreen>
 
       if (!mounted) return;
 
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => authService.isLoggedIn
-              ? const HomeScreen()
-              : const LoginScreen(),
-        ),
-      );
+      if (authService.isLoggedIn) {
+        final isVerified = authService.isEmailVerified;
+
+        if (isVerified) {
+          // Verified user - go to home screen
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
+          );
+        } else {
+          // Unverified user - go to verification screen
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const VerifyEmailScreen()),
+          );
+        }
+      } else {
+        // Not logged in - go to login screen
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+      }
     });
   }
 

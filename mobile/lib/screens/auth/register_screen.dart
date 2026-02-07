@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/profile_service.dart';
 import '../../theme/app_colors.dart';
-import '../home_screen.dart';
+import 'verify_email_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -59,8 +59,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
             displayName: _nameController.text.trim(),
             dob: _dob,
           );
+      // Navigate to email verification screen
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => const VerifyEmailScreen()),
         (route) => false,
       );
       // No need to reset _isRegistering - widget is unmounted after navigation

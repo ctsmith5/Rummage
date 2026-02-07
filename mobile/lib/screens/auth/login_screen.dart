@@ -5,6 +5,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../home_screen.dart';
 import 'register_screen.dart';
+import 'verify_email_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -36,9 +37,19 @@ class _LoginScreenState extends State<LoginScreen> {
     );
 
     if (success && mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-      );
+      final isVerified = authService.currentUser?.emailVerified ?? false;
+
+      if (isVerified) {
+        // Verified user - go to home screen
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+        );
+      } else {
+        // Unverified user - go to verification screen
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const VerifyEmailScreen()),
+        );
+      }
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
