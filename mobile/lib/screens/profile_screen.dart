@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -28,6 +30,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _photoUrl = '';
   bool _saving = false;
   bool _deleting = false;
+  File? _localPhotoFile;
+  String _photoUploadStatus = '';
 
   @override
   void dispose() {
@@ -125,42 +129,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final file = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1200, imageQuality: 85);
     if (file == null) return;
 
-    setState(() => _saving = true);
+    setState(() {
+      _localPhotoFile = File(file.path);
+      _saving = true;
+      _photoUploadStatus = 'Uploading...';
+    });
+
     final url = await FirebaseStorageService.uploadProfileImage(
       imageFile: file,
       userId: authUser.uid,
     );
     if (!mounted) return;
     if (url == null) {
-      setState(() => _saving = false);
+      setState(() {
+        _saving = false;
+        _localPhotoFile = null;
+        _photoUploadStatus = '';
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(FirebaseStorageService.lastUploadError ?? 'Failed to upload photo')),
+        const SnackBar(
+          content: Text('Failed to upload image. Please try again.'),
+          backgroundColor: AppColors.error,
+        ),
       );
       return;
     }
 
+    setState(() {
+      _photoUploadStatus = 'Checking image...';
+    });
+
     final ok = await context.read<ProfileService>().updateProfile(photoUrl: url);
     if (!mounted) return;
-    setState(() => _saving = false);
+
     if (!ok) {
       final errorMsg = context.read<ProfileService>().error ?? '';
       final isRejected = errorMsg.toLowerCase().contains('rejected');
+      setState(() {
+        _saving = false;
+        _localPhotoFile = null;
+        _photoUploadStatus = '';
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(isRejected
-            ? 'Photo rejected — violates community guidelines'
-            : 'Failed to save profile photo')),
+        SnackBar(
+          content: Text(isRejected
+              ? 'Content was deemed UNSAFE and has been removed'
+              : 'Failed to save profile photo'),
+          backgroundColor: AppColors.error,
+        ),
       );
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Profile photo updated!')),
-    );
+
     final p = context.read<ProfileService>().profile;
-    if (p != null) {
-      setState(() {
-        _photoUrl = p.photoUrl;
-      });
-    }
+    setState(() {
+      _saving = false;
+      _localPhotoFile = null;
+      _photoUploadStatus = '';
+      if (p != null) _photoUrl = p.photoUrl;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Profile photo updated!'),
+        backgroundColor: AppColors.success,
+      ),
+    );
   }
 
   Future<void> _deleteAccount() async {
@@ -229,7 +262,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: const Text('Profile'),
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
+        child: Stack(
+          children: [
+            SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -241,8 +276,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: CircleAvatar(
                     radius: 48,
                     backgroundColor: AppColors.lightSurface,
-                    backgroundImage: _photoUrl.isNotEmpty ? NetworkImage(_photoUrl) : null,
-                    child: _photoUrl.isEmpty
+                    backgroundImage: _localPhotoFile != null
+                        ? FileImage(_localPhotoFile!) as ImageProvider
+                        : (_photoUrl.isNotEmpty ? NetworkImage(_photoUrl) : null),
+                    child: _localPhotoFile == null && _photoUrl.isEmpty
                         ? const Icon(Icons.person, size: 42, color: AppColors.primary)
                         : null,
                   ),
@@ -345,6 +382,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ],
           ),
+        ),
+            if (_saving && _photoUploadStatus.isNotEmpty)
+              Container(
+                color: Colors.black.withAlpha((0.25 * 255).round()),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 12),
+                      Text(_photoUploadStatus, style: const TextStyle(color: Colors.white, fontSize: 16)),
+                    ],
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
