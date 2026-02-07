@@ -117,9 +117,23 @@ func (m *ModerationService) promoteObject(ctx context.Context, from, to, token s
 	src := b.Object(from)
 	dst := b.Object(to)
 
-	// Read source metadata.
-	attrs, err := src.Attrs(ctx)
-	if err != nil {
+	// Read source metadata with retry for eventual consistency.
+	// Firebase Storage may need a moment to finalize uploads before the object is accessible.
+	var attrs *storage.ObjectAttrs
+	var err error
+	maxRetries := 3
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		attrs, err = src.Attrs(ctx)
+		if err == nil {
+			break
+		}
+		// If object not found and we have retries left, wait and try again.
+		if err == storage.ErrObjectNotExist && attempt < maxRetries-1 {
+			backoff := time.Duration(attempt+1) * 500 * time.Millisecond
+			log.Printf("[moderation] object not found yet, retrying in %v (attempt %d/%d): %s", backoff, attempt+1, maxRetries, from)
+			time.Sleep(backoff)
+			continue
+		}
 		return fmt.Errorf("source attrs: %w", err)
 	}
 
