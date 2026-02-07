@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -41,6 +43,9 @@ class _ItemDetailsScreenState extends State<ItemDetailsScreen> {
   bool _isDeleting = false;
 
   int _pageIndex = 0;
+  File? _pendingLocalImage;
+  String _uploadStatusText = '';
+  final PageController _pageController = PageController();
 
   OutlineInputBorder _outlineBorder(Color color) {
     return OutlineInputBorder(
@@ -84,6 +89,7 @@ class _ItemDetailsScreenState extends State<ItemDetailsScreen> {
     _nameController.dispose();
     _descriptionController.dispose();
     _priceController.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -134,8 +140,24 @@ class _ItemDetailsScreenState extends State<ItemDetailsScreen> {
   }
 
   Future<void> _uploadNewImage(XFile image) async {
+    final salesService = context.read<SalesService>();
+
+    final totalPages = _imageUrls.length + 1; // +1 for pending local image
     setState(() {
+      _pendingLocalImage = File(image.path);
       _isSaving = true;
+      _uploadStatusText = 'Uploading...';
+    });
+
+    // Auto-scroll to the pending image page after the next frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_pageController.hasClients) {
+        _pageController.animateToPage(
+          totalPages - 1,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
     });
 
     final userId = context.read<AuthService>().currentUser?.id ?? '';
@@ -151,31 +173,66 @@ class _ItemDetailsScreenState extends State<ItemDetailsScreen> {
     if (url == null || url.isEmpty) {
       setState(() {
         _isSaving = false;
+        _pendingLocalImage = null;
+        _uploadStatusText = '';
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            FirebaseStorageService.lastUploadError != null
-                ? 'Upload failed: ${FirebaseStorageService.lastUploadError}'
-                : 'Upload failed. Please try again.',
-          ),
+        const SnackBar(
+          content: Text('Failed to upload image. Please try again.'),
           backgroundColor: AppColors.error,
         ),
       );
       return;
     }
 
-    // We only get a pending storage path here. The server-side moderation worker will
-    // promote it to an approved download URL and the backend will return it on refresh.
+    setState(() {
+      _uploadStatusText = 'Checking image...';
+    });
+
+    // Call updateItem so the backend can moderate and persist the new image.
+    final newUrls = [..._imageUrls, url];
+    final req = CreateItemRequest(
+      name: _nameController.text.trim(),
+      description: _descriptionController.text.trim(),
+      price: double.tryParse(_priceController.text.trim()) ?? 0,
+      imageUrls: newUrls,
+      category: _category,
+    );
+
+    final updated = await salesService.updateItem(widget.saleId, _item.id, req);
+
+    if (!mounted) return;
+
     setState(() {
       _isSaving = false;
+      _uploadStatusText = '';
+      if (updated != null) {
+        _item = updated;
+        _imageUrls = List<String>.from(updated.imageUrls);
+      } else {
+        _pendingLocalImage = null;
+      }
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Image submitted for review. It will appear once approved.'),
-        backgroundColor: AppColors.primary,
-      ),
-    );
+
+    if (updated == null) {
+      final errorMsg = salesService.error ?? 'Failed to save image.';
+      final isRejected = errorMsg.toLowerCase().contains('rejected');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(isRejected
+              ? 'Content was deemed UNSAFE and has been removed'
+              : errorMsg),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Image added!'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    }
   }
 
   Future<void> _removeImageAt(int index) async {
@@ -311,7 +368,13 @@ class _ItemDetailsScreenState extends State<ItemDetailsScreen> {
   }
 
   Widget _buildImagePager(bool isDarkMode) {
-    if (_imageUrls.isEmpty) {
+    // Only show the extra pending page while upload is in progress.
+    // After success, _pendingLocalImage stays set as a placeholder hint
+    // but _isSaving is false so no extra page is added.
+    final showPendingPage = _pendingLocalImage != null && _isSaving;
+    final totalCount = _imageUrls.length + (showPendingPage ? 1 : 0);
+
+    if (totalCount == 0) {
       return Container(
         height: 260,
         color: isDarkMode ? AppColors.darkSurface : AppColors.lightSurface,
@@ -336,24 +399,43 @@ class _ItemDetailsScreenState extends State<ItemDetailsScreen> {
       child: Stack(
         children: [
           PageView.builder(
-            itemCount: _imageUrls.length,
+            controller: _pageController,
+            itemCount: totalCount,
             onPageChanged: (i) => setState(() => _pageIndex = i),
             itemBuilder: (context, index) {
-              return CachedNetworkImage(
-                imageUrl: _imageUrls[index],
+              if (index < _imageUrls.length) {
+                return CachedNetworkImage(
+                  imageUrl: _imageUrls[index],
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) {
+                    // Use local preview as placeholder for the most recently added image
+                    if (_pendingLocalImage != null && index == _imageUrls.length - 1) {
+                      return Image.file(
+                        _pendingLocalImage!,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                      );
+                    }
+                    return Container(
+                      color: isDarkMode ? AppColors.darkSurface : AppColors.lightSurface,
+                      child: const Center(child: CircularProgressIndicator()),
+                    );
+                  },
+                  errorWidget: (context, url, error) => Container(
+                    color: isDarkMode ? AppColors.darkSurface : AppColors.lightSurface,
+                    child: const Icon(Icons.error),
+                  ),
+                );
+              }
+              // Pending local image (shown during upload only)
+              return Image.file(
+                _pendingLocalImage!,
                 fit: BoxFit.cover,
-                placeholder: (context, url) => Container(
-                  color: isDarkMode ? AppColors.darkSurface : AppColors.lightSurface,
-                  child: const Center(child: CircularProgressIndicator()),
-                ),
-                errorWidget: (context, url, error) => Container(
-                  color: isDarkMode ? AppColors.darkSurface : AppColors.lightSurface,
-                  child: const Icon(Icons.error),
-                ),
+                width: double.infinity,
               );
             },
           ),
-          if (widget.isOwner && _isEditing)
+          if (widget.isOwner && _isEditing && !_isSaving)
             Positioned(
               right: 12,
               bottom: 12,
@@ -364,7 +446,7 @@ class _ItemDetailsScreenState extends State<ItemDetailsScreen> {
                 child: const Icon(Icons.add_a_photo, color: Colors.white),
               ),
             ),
-          if (_imageUrls.length > 1)
+          if (totalCount > 1)
             Positioned(
               left: 12,
               bottom: 12,
@@ -375,7 +457,7 @@ class _ItemDetailsScreenState extends State<ItemDetailsScreen> {
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
-                  '${_pageIndex + 1}/${_imageUrls.length}',
+                  '${_pageIndex + 1}/$totalCount',
                   style: const TextStyle(color: Colors.white, fontSize: 12),
                 ),
               ),
@@ -553,7 +635,18 @@ class _ItemDetailsScreenState extends State<ItemDetailsScreen> {
           if (_isSaving || _isDeleting)
             Container(
               color: Colors.black.withAlpha((0.25 * 255).round()),
-              child: const Center(child: CircularProgressIndicator()),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    if (_uploadStatusText.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(_uploadStatusText, style: const TextStyle(color: Colors.white, fontSize: 16)),
+                    ],
+                  ],
+                ),
+              ),
             ),
         ],
       ),
