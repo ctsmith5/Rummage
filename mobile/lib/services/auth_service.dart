@@ -13,6 +13,7 @@ class AuthService extends ChangeNotifier {
   User? get currentUser => _currentUser;
   bool get isLoading => _isLoading;
   bool get isLoggedIn => _currentUser != null;
+  bool get isEmailVerified => _auth.currentUser?.emailVerified ?? false;
   String? get error => _error;
 
   AuthService() {
@@ -30,6 +31,7 @@ class AuthService extends ChangeNotifier {
       email: user.email ?? '',
       name: user.displayName ?? '',
       createdAt: user.metadata.creationTime ?? DateTime.now(),
+      emailVerified: user.emailVerified,
     );
   }
 
@@ -49,6 +51,7 @@ class AuthService extends ChangeNotifier {
         password: password,
       );
       await cred.user?.updateDisplayName(name);
+      await cred.user?.sendEmailVerification();
       await cred.user?.reload();
       _currentUser = _mapFirebaseUser(_auth.currentUser);
       _isLoading = false;
@@ -95,6 +98,30 @@ class AuthService extends ChangeNotifier {
     await _auth.signOut();
     _currentUser = null;
     notifyListeners();
+  }
+
+  Future<bool> sendEmailVerification() async {
+    try {
+      await _auth.currentUser?.sendEmailVerification();
+      return true;
+    } catch (e) {
+      _error = 'Failed to send verification email. Please try again.';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> checkEmailVerified() async {
+    try {
+      await _auth.currentUser?.reload();
+      _currentUser = _mapFirebaseUser(_auth.currentUser);
+      notifyListeners();
+      return _auth.currentUser?.emailVerified ?? false;
+    } catch (e) {
+      _error = 'Failed to check verification status. Please try again.';
+      notifyListeners();
+      return false;
+    }
   }
 
   void clearError() {
