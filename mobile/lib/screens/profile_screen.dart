@@ -196,6 +196,254 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Future<void> _showChangePasswordDialog() async {
+    final currentPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    bool obscureCurrent = true;
+    bool obscureNew = true;
+    bool obscureConfirm = true;
+
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Change Password'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Current password field
+                    TextField(
+                      controller: currentPasswordController,
+                      decoration: InputDecoration(
+                        labelText: 'Current password',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            obscureCurrent
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setDialogState(() {
+                              obscureCurrent = !obscureCurrent;
+                            });
+                          },
+                        ),
+                      ),
+                      obscureText: obscureCurrent,
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // New password field
+                    TextField(
+                      controller: newPasswordController,
+                      decoration: InputDecoration(
+                        labelText: 'New password',
+                        helperText: 'At least 6 characters',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            obscureNew
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setDialogState(() {
+                              obscureNew = !obscureNew;
+                            });
+                          },
+                        ),
+                      ),
+                      obscureText: obscureNew,
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Confirm password field
+                    TextField(
+                      controller: confirmPasswordController,
+                      decoration: InputDecoration(
+                        labelText: 'Confirm new password',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            obscureConfirm
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setDialogState(() {
+                              obscureConfirm = !obscureConfirm;
+                            });
+                          },
+                        ),
+                      ),
+                      obscureText: obscureConfirm,
+                      textInputAction: TextInputAction.done,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    currentPasswordController.dispose();
+                    newPasswordController.dispose();
+                    confirmPasswordController.dispose();
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    await _changePassword(
+                      dialogContext,
+                      currentPasswordController.text,
+                      newPasswordController.text,
+                      confirmPasswordController.text,
+                    );
+                    currentPasswordController.dispose();
+                    newPasswordController.dispose();
+                    confirmPasswordController.dispose();
+                  },
+                  child: const Text('Change Password'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _changePassword(
+    BuildContext dialogContext,
+    String currentPassword,
+    String newPassword,
+    String confirmPassword,
+  ) async {
+    // Validation
+    if (currentPassword.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter your current password'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (newPassword.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a new password'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Password must be at least 6 characters'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (newPassword != confirmPassword) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('New passwords do not match'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (currentPassword == newPassword) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('New password must be different from current password'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final user = fb.FirebaseAuth.instance.currentUser;
+      if (user == null || user.email == null) {
+        throw Exception('Not authenticated');
+      }
+
+      // Step 1: Re-authenticate with current password (required by Firebase)
+      final credential = fb.EmailAuthProvider.credential(
+        email: user.email!,
+        password: currentPassword,
+      );
+
+      await user.reauthenticateWithCredential(credential);
+
+      // Step 2: Update password
+      await user.updatePassword(newPassword);
+
+      if (!mounted) return;
+
+      // Close dialog
+      Navigator.of(dialogContext).pop();
+
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Password changed successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } on fb.FirebaseAuthException catch (e) {
+      if (!mounted) return;
+
+      String errorMessage;
+      switch (e.code) {
+        case 'wrong-password':
+          errorMessage = 'Current password is incorrect';
+          break;
+        case 'weak-password':
+          errorMessage = 'New password is too weak';
+          break;
+        case 'requires-recent-login':
+          errorMessage = 'Please log out and log back in before changing password';
+          break;
+        default:
+          errorMessage = 'Failed to change password: ${e.message ?? 'Unknown error'}';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to change password. Please try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   Future<void> _deleteAccount() async {
     // Confirm using a full-screen route (not dialogs) to avoid Overlay teardown races.
     final nav = appNavigatorKey.currentState;
@@ -342,6 +590,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ElevatedButton(
                 onPressed: _saving ? null : _save,
                 child: _saving ? const Text('Saving…') : const Text('Save'),
+              ),
+
+              const SizedBox(height: 12),
+
+              // Change password button
+              OutlinedButton.icon(
+                onPressed: _saving ? null : _showChangePasswordDialog,
+                icon: const Icon(Icons.lock_outline),
+                label: const Text('Change password'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                ),
               ),
 
               const SizedBox(height: 12),
