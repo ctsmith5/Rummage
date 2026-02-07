@@ -63,6 +63,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _bioController.text = p.bio;
       _dob = p.dob;
       _photoUrl = p.photoUrl;
+      _localPhotoFile = null;
     });
   }
 
@@ -184,7 +185,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final p = context.read<ProfileService>().profile;
     setState(() {
       _saving = false;
-      _localPhotoFile = null;
       _photoUploadStatus = '';
       if (p != null) _photoUrl = p.photoUrl;
     });

@@ -205,11 +205,12 @@ class _ItemDetailsScreenState extends State<ItemDetailsScreen> {
 
     setState(() {
       _isSaving = false;
-      _pendingLocalImage = null;
       _uploadStatusText = '';
       if (updated != null) {
         _item = updated;
         _imageUrls = List<String>.from(updated.imageUrls);
+      } else {
+        _pendingLocalImage = null;
       }
     });
 
@@ -367,8 +368,11 @@ class _ItemDetailsScreenState extends State<ItemDetailsScreen> {
   }
 
   Widget _buildImagePager(bool isDarkMode) {
-    final hasPending = _pendingLocalImage != null;
-    final totalCount = _imageUrls.length + (hasPending ? 1 : 0);
+    // Only show the extra pending page while upload is in progress.
+    // After success, _pendingLocalImage stays set as a placeholder hint
+    // but _isSaving is false so no extra page is added.
+    final showPendingPage = _pendingLocalImage != null && _isSaving;
+    final totalCount = _imageUrls.length + (showPendingPage ? 1 : 0);
 
     if (totalCount == 0) {
       return Container(
@@ -403,17 +407,27 @@ class _ItemDetailsScreenState extends State<ItemDetailsScreen> {
                 return CachedNetworkImage(
                   imageUrl: _imageUrls[index],
                   fit: BoxFit.cover,
-                  placeholder: (context, url) => Container(
-                    color: isDarkMode ? AppColors.darkSurface : AppColors.lightSurface,
-                    child: const Center(child: CircularProgressIndicator()),
-                  ),
+                  placeholder: (context, url) {
+                    // Use local preview as placeholder for the most recently added image
+                    if (_pendingLocalImage != null && index == _imageUrls.length - 1) {
+                      return Image.file(
+                        _pendingLocalImage!,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                      );
+                    }
+                    return Container(
+                      color: isDarkMode ? AppColors.darkSurface : AppColors.lightSurface,
+                      child: const Center(child: CircularProgressIndicator()),
+                    );
+                  },
                   errorWidget: (context, url, error) => Container(
                     color: isDarkMode ? AppColors.darkSurface : AppColors.lightSurface,
                     child: const Icon(Icons.error),
                   ),
                 );
               }
-              // Pending local image
+              // Pending local image (shown during upload only)
               return Image.file(
                 _pendingLocalImage!,
                 fit: BoxFit.cover,

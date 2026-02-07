@@ -65,6 +65,7 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
     setState(() {
       _loadError = null;
       _selectedSale = null;
+      _localCoverFile = null;
     });
 
     final sale = await context.read<SalesService>().getSaleDetails(widget.saleId);
@@ -931,9 +932,10 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
     setState(() {
       _isCoverUploading = false;
       _coverUploadProgress = 0;
-      _localCoverFile = null;
       if (updated != null) {
         _selectedSale = updated;
+      } else {
+        _localCoverFile = null;
       }
     });
 
