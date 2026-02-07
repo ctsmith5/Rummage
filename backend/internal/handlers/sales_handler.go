@@ -15,12 +15,14 @@ import (
 )
 
 type SalesHandler struct {
-	salesService services.SalesService
+	salesService      services.SalesService
+	moderationService *services.ModerationService
 }
 
-func NewSalesHandler(salesService services.SalesService) *SalesHandler {
+func NewSalesHandler(salesService services.SalesService, moderationService *services.ModerationService) *SalesHandler {
 	return &SalesHandler{
-		salesService: salesService,
+		salesService:      salesService,
+		moderationService: moderationService,
 	}
 }
 
@@ -109,7 +111,22 @@ func (h *SalesHandler) SetSaleCoverPhoto(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	sale, err := h.salesService.SetSaleCoverPhoto(userID, saleID, req.SaleCoverPhoto)
+	coverURL := req.SaleCoverPhoto
+	if h.moderationService != nil && strings.HasPrefix(coverURL, "pending/") {
+		res, err := h.moderationService.ModerateAndPromote(r.Context(), coverURL, userID)
+		if err != nil {
+			if err == services.ErrImageRejected {
+				writeJSON(w, http.StatusUnprocessableEntity, models.NewErrorResponse("Photo rejected — violates community guidelines"))
+				return
+			}
+			log.Printf("[SetSaleCoverPhoto] moderation error: %v", err)
+			writeJSON(w, http.StatusInternalServerError, models.NewErrorResponse("Failed to process image"))
+			return
+		}
+		coverURL = res.ApprovedURL
+	}
+
+	sale, err := h.salesService.SetSaleCoverPhoto(userID, saleID, coverURL)
 	if err != nil {
 		if err == services.ErrSaleNotFound {
 			writeJSON(w, http.StatusNotFound, models.NewErrorResponse("Sale not found"))
@@ -311,6 +328,20 @@ func (h *SalesHandler) AddItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.moderationService != nil && len(req.ImageURLs) > 0 {
+		approved, err := h.moderationService.ModerateMultiple(r.Context(), req.ImageURLs, userID)
+		if err != nil {
+			if err == services.ErrImageRejected {
+				writeJSON(w, http.StatusUnprocessableEntity, models.NewErrorResponse("Photo rejected — violates community guidelines"))
+				return
+			}
+			log.Printf("[AddItem] moderation error: %v", err)
+			writeJSON(w, http.StatusInternalServerError, models.NewErrorResponse("Failed to process image"))
+			return
+		}
+		req.ImageURLs = approved
+	}
+
 	item, err := h.salesService.AddItem(userID, saleID, &req)
 	if err != nil {
 		if err == services.ErrSaleNotFound {
@@ -342,6 +373,20 @@ func (h *SalesHandler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 	if errors := req.Validate(); len(errors) > 0 {
 		writeJSON(w, http.StatusBadRequest, models.NewValidationErrorResponse(errors))
 		return
+	}
+
+	if h.moderationService != nil && len(req.ImageURLs) > 0 {
+		approved, err := h.moderationService.ModerateMultiple(r.Context(), req.ImageURLs, userID)
+		if err != nil {
+			if err == services.ErrImageRejected {
+				writeJSON(w, http.StatusUnprocessableEntity, models.NewErrorResponse("Photo rejected — violates community guidelines"))
+				return
+			}
+			log.Printf("[UpdateItem] moderation error: %v", err)
+			writeJSON(w, http.StatusInternalServerError, models.NewErrorResponse("Failed to process image"))
+			return
+		}
+		req.ImageURLs = approved
 	}
 
 	item, err := h.salesService.UpdateItem(userID, saleID, itemID, &req)

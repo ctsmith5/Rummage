@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -46,6 +48,8 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
   bool _showCoverEditButton = false;
   bool _isDeletingSale = false;
   bool _isUpdatingSaleTime = false;
+  File? _localCoverFile;
+  String _coverStatusText = 'Uploading...';
   @override
   void initState() {
     super.initState();
@@ -61,6 +65,7 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
     setState(() {
       _loadError = null;
       _selectedSale = null;
+      _localCoverFile = null;
     });
 
     final sale = await context.read<SalesService>().getSaleDetails(widget.saleId);
@@ -738,7 +743,13 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (hasCover)
+            if (_localCoverFile != null)
+              Image.file(
+                _localCoverFile!,
+                fit: BoxFit.cover,
+                width: double.infinity,
+              )
+            else if (hasCover)
               CachedNetworkImage(
                 imageUrl: sale.saleCoverPhoto,
                 fit: BoxFit.cover,
@@ -776,9 +787,9 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                       const SizedBox(height: 8),
                       Text(
                         _coverUploadProgress > 0
-                            ? 'Uploading… ${(_coverUploadProgress * 100).toInt()}%'
-                            : 'Uploading…',
-                        style: const TextStyle(color: Colors.white),
+                            ? 'Uploading... ${(_coverUploadProgress * 100).toInt()}%'
+                            : _coverStatusText,
+                        style: const TextStyle(color: Colors.white, fontSize: 16),
                       ),
                     ],
                   ),
@@ -842,6 +853,9 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                   imageQuality: 85,
                 );
                 if (image != null && mounted) {
+                  setState(() {
+                    _localCoverFile = File(image.path);
+                  });
                   await _uploadCoverPhoto(saleId, image);
                 }
               },
@@ -858,6 +872,9 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                   imageQuality: 85,
                 );
                 if (image != null && mounted) {
+                  setState(() {
+                    _localCoverFile = File(image.path);
+                  });
                   await _uploadCoverPhoto(saleId, image);
                 }
               },
@@ -872,6 +889,7 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
     setState(() {
       _isCoverUploading = true;
       _coverUploadProgress = 0;
+      _coverStatusText = 'Uploading...';
     });
 
     final userId = context.read<AuthService>().currentUser?.id ?? '';
@@ -892,20 +910,20 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
     if (url == null || url.isEmpty) {
       setState(() {
         _isCoverUploading = false;
+        _localCoverFile = null;
       });
-      final reason = FirebaseStorageService.lastUploadError;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            reason != null && reason.isNotEmpty
-                ? 'Failed to upload cover photo: $reason'
-                : 'Failed to upload cover photo. Please try again.',
-          ),
+        const SnackBar(
+          content: Text('Failed to upload image. Please try again.'),
           backgroundColor: AppColors.error,
         ),
       );
       return;
     }
+
+    setState(() {
+      _coverStatusText = 'Checking image...';
+    });
 
     final updated = await context.read<SalesService>().setSaleCoverPhoto(saleId, url);
 
@@ -916,19 +934,28 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
       _coverUploadProgress = 0;
       if (updated != null) {
         _selectedSale = updated;
+      } else {
+        _localCoverFile = null;
       }
     });
 
     if (updated == null) {
+      final errorMsg = context.read<SalesService>().error ?? 'Failed to save cover photo.';
+      final isRejected = errorMsg.toLowerCase().contains('rejected');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(context.read<SalesService>().error ?? 'Failed to save cover photo.'),
+          content: Text(isRejected
+              ? 'Content was deemed UNSAFE and has been removed'
+              : errorMsg),
           backgroundColor: AppColors.error,
         ),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cover photo submitted for review. It will appear once approved.')),
+        const SnackBar(
+          content: Text('Cover photo updated!'),
+          backgroundColor: AppColors.success,
+        ),
       );
     }
   }

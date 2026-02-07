@@ -187,7 +187,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
     }
 
     setState(() {
-      _loadingMessage = 'Creating item...';
+      _loadingMessage = 'Checking image...';
     });
 
     final request = CreateItemRequest(
@@ -217,9 +217,18 @@ class _AddItemScreenState extends State<AddItemScreen> {
       // Return `true` so the Sale Details screen can refresh immediately.
       Navigator.of(context).pop(true);
     } else if (mounted) {
+      final errorMsg = salesService.error ?? 'Failed to add item. Please try again.';
+      final isRejected = errorMsg.toLowerCase().contains('rejected');
+      if (isRejected) {
+        setState(() {
+          _selectedImage = null;
+        });
+      }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to add item. Please try again.'),
+        SnackBar(
+          content: Text(isRejected
+              ? 'Content was deemed UNSAFE and has been removed'
+              : errorMsg),
           backgroundColor: AppColors.error,
         ),
       );
@@ -234,7 +243,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
       appBar: AppBar(
         title: const Text('Add Item'),
       ),
-      body: Form(
+      body: Stack(
+        children: [
+          Form(
         key: _formKey,
         child: ListView(
           padding: const EdgeInsets.all(16),
@@ -400,6 +411,22 @@ class _AddItemScreenState extends State<AddItemScreen> {
             ),
           ],
         ),
+      ),
+          if (_isLoading)
+            Container(
+              color: Colors.black.withAlpha((0.25 * 255).round()),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 12),
+                    Text(_loadingMessage, style: const TextStyle(color: Colors.white, fontSize: 16)),
+                  ],
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

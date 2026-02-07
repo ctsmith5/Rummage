@@ -59,11 +59,28 @@ func main() {
 	recaptchaVerifier := services.NewRecaptchaVerifier(cfg.RecaptchaSecret)
 	sendGridMailer := services.NewSendGridMailer(cfg.SendGridAPIKey, cfg.SupportFromEmail, cfg.SupportToEmail)
 
+	// Moderation service (nil-safe: if FIREBASE_BUCKET not set, moderation is skipped).
+	var moderationService *services.ModerationService
+	if cfg.FirebaseBucket != "" {
+		var flagSvc *services.MongoUserFlagService
+		flagSvc, err = services.NewMongoUserFlagService(ctx, cfg.MongoURI, cfg.MongoDB)
+		if err != nil {
+			log.Printf("Warning: failed to init user flag service (strikes disabled): %v", err)
+		}
+		moderationService, err = services.NewModerationService(context.Background(), cfg.FirebaseBucket, flagSvc)
+		if err != nil {
+			log.Printf("Warning: failed to init moderation service (moderation disabled): %v", err)
+			moderationService = nil
+		} else {
+			log.Printf("Moderation service enabled for bucket %s", cfg.FirebaseBucket)
+		}
+	}
+
 	// Initialize handlers
-	salesHandler := handlers.NewSalesHandler(salesService)
+	salesHandler := handlers.NewSalesHandler(salesService, moderationService)
 	favoriteHandler := handlers.NewFavoriteHandler(favoriteService)
 	imageHandler := handlers.NewImageHandler(imageService, cfg.MaxUploadSizeMB)
-	profileHandler := handlers.NewProfileHandler(profileService, authClient)
+	profileHandler := handlers.NewProfileHandler(profileService, authClient, moderationService)
 	accountHandler := handlers.NewAccountHandler(accountService)
 	supportHandler := handlers.NewSupportHandler(recaptchaVerifier, sendGridMailer)
 
