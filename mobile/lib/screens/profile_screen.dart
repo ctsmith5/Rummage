@@ -12,7 +12,6 @@ import '../services/firebase_storage_service.dart';
 import '../services/profile_service.dart';
 import '../theme/app_colors.dart';
 import 'auth/login_screen.dart';
-import 'confirm_delete_account_screen.dart';
 import 'deleting_account_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -507,29 +506,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _deleteAccount() async {
-    // Confirm using a full-screen route (not dialogs) to avoid Overlay teardown races.
-    final nav = appNavigatorKey.currentState;
-    if (nav == null) return;
-    final proceed = await nav.push<bool>(
-          MaterialPageRoute(builder: (_) => const ConfirmDeleteAccountScreen()),
-        ) ??
-        false;
-    if (!proceed) return;
+    // Show password confirmation dialog
+    final password = await _showPasswordConfirmDialog();
+    if (password == null) return; // User cancelled
 
-    // Move to a dedicated screen via the ROOT navigator so we don't depend on a context
-    // that is being disposed (prevents Overlay/_Theater GlobalKey teardown errors).
+    if (!mounted) return;
+
+    // Wait for dialog overlay to fully dismiss to avoid GlobalKey conflicts
+    await Future.delayed(const Duration(milliseconds: 100));
+
     if (!mounted) return;
     setState(() => _deleting = true);
     FocusScope.of(context).unfocus();
     appScaffoldMessengerKey.currentState?.clearSnackBars();
 
+    final nav = appNavigatorKey.currentState;
+    if (nav == null) return;
+
+    // Navigate directly to deletion screen with password
     nav.pushAndRemoveUntil(
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const DeletingAccountScreen(),
+        pageBuilder: (_, __, ___) => DeletingAccountScreen(password: password),
         transitionDuration: Duration.zero,
         reverseTransitionDuration: Duration.zero,
       ),
       (route) => false,
+    );
+  }
+
+  Future<String?> _showPasswordConfirmDialog() async {
+    return showDialog<String?>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const _PasswordConfirmDialog(),
     );
   }
 
@@ -722,6 +731,72 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Dialog for confirming account deletion with password input.
+/// Uses StatefulWidget so the TextEditingController is properly disposed
+/// after the dialog animation completes.
+class _PasswordConfirmDialog extends StatefulWidget {
+  const _PasswordConfirmDialog();
+
+  @override
+  State<_PasswordConfirmDialog> createState() => _PasswordConfirmDialogState();
+}
+
+class _PasswordConfirmDialogState extends State<_PasswordConfirmDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Delete account'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'This will permanently delete your account and all sales you created.',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Text('This cannot be undone.'),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _controller,
+            obscureText: true,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Enter your password to confirm',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(null),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.error,
+          ),
+          onPressed: () {
+            final password = _controller.text.trim();
+            if (password.isEmpty) return;
+            Navigator.of(context).pop(password);
+          },
+          child: const Text('Delete account'),
+        ),
+      ],
     );
   }
 }
