@@ -24,7 +24,11 @@ class _SavedScreenState extends State<SavedScreen> {
   @override
   void initState() {
     super.initState();
-    _loadFavorites();
+    // Defer data loading until after build to avoid notifyListeners during build phase
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadFavorites();
+    });
   }
 
   Future<void> _loadFavorites() async {
