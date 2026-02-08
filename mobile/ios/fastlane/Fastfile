@@ -19,6 +19,50 @@ platform :ios do
       key_content: ENV.fetch("APP_STORE_CONNECT_API_KEY_P8")
     )
 
+    # Auto-increment version if needed to avoid "version closed" errors
+    pubspec_path = File.expand_path("../../pubspec.yaml", __dir__)
+    pubspec_content = File.read(pubspec_path)
+    version_match = pubspec_content.match(/^version:\s*(.+?)\+(\d+)/)
+    current_version = version_match[1]
+    current_build = version_match[2]
+
+    UI.message("Current version in pubspec.yaml: #{current_version}+#{current_build}")
+
+    begin
+      # Check if this version already exists in TestFlight
+      latest_build_num = latest_testflight_build_number(
+        api_key: api_key,
+        app_identifier: app_identifier,
+        version: current_version
+      )
+
+      if latest_build_num && latest_build_num.to_i > 0
+        UI.important("⚠️  Version #{current_version} exists in TestFlight (build #{latest_build_num})")
+        UI.important("This version may be closed - auto-incrementing to avoid upload failure...")
+
+        # Increment patch version
+        version_parts = current_version.split('.').map(&:to_i)
+        version_parts[2] = (version_parts[2] || 0) + 1
+        new_version = version_parts.join('.')
+
+        # Update pubspec.yaml with new version and reset build to 1
+        new_content = pubspec_content.sub(
+          /^version:\s*[\d.]+\+\d+/,
+          "version: #{new_version}+1"
+        )
+        File.write(pubspec_path, new_content)
+
+        UI.success("✅ Auto-incremented version: #{current_version} → #{new_version}")
+        current_version = new_version
+      else
+        UI.message("✓ Version #{current_version} not found in TestFlight - can use it")
+      end
+    rescue => ex
+      # If we can't query (e.g., first build, API issue), proceed with current version
+      UI.message("Could not query TestFlight versions: #{ex.message}")
+      UI.message("Proceeding with version #{current_version}")
+    end
+
     # Create/unlock a temporary keychain on CI so certs can be imported reliably.
     setup_ci
 
